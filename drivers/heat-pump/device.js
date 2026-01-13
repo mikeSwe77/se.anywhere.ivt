@@ -17,14 +17,42 @@ class HeatPumpDevice extends Device {
 
     const updateInterval = Number(this.getSetting('interval')) * 1000;
     this.data = this.getData();
+    this.isWriting = false; // Flag to pause polling during writes
+
+    // Register capability listener for Target Temperature
+    this.registerCapabilityListener('target_temperature', this.onCapabilityTargetTemperature.bind(this));
 
     this.log(`[${this.getName()}][${this.data.id}]`, `Update Interval: ${updateInterval}`);
     this.log(`[${this.getName()}][${this.data.id}]`, 'Connected to device');
+    
+    // Start polling loop
     this.interval = setInterval(async () => {
-      await this.getDeviceData();
+      if (!this.isWriting) {
+        await this.getDeviceData();
+      }
     }, updateInterval);
 
     this.log('IVT heat pump device has been initialized');
+  }
+
+  async onCapabilityTargetTemperature(value) {
+    this.isWriting = true;
+    const endpoint = '/heatingCircuits/hc1/temperatureRoomSetpoint';
+    const payload = { value: parseFloat(value) };
+
+    try {
+      if (this.client && typeof this.client.put === 'function') {
+        await this.client.put(endpoint, payload);
+        return Promise.resolve();
+      } else {
+        throw new Error('Client does not support "put" command or is not connected.');
+      }
+    } catch (err) {
+      this.log('Failed to set target temperature:', err);
+      return Promise.reject(err);
+    } finally {
+      this.isWriting = false;
+    }
   }
 
   async getDeviceData() {
@@ -34,25 +62,21 @@ class HeatPumpDevice extends Device {
       'LAST_HOUR_POWER_COMPRESSOR',
     ];
 
-    this.log(`[${this.getName()}][${this.data.id}]`, 'Refreshing device data');
-
     for (const [key, value] of Object.entries(Capabilities)) {
+      if (this.isWriting) break; // Stop polling if a write is in progress
+
       try {
         let result;
-        // Add the date to energy monitoring capabilites endpoints
         const endpoint = energyMonitoringCapabilities.includes(key)
           ? value.endpoint + new Date().toISOString().split('T')[0]
           : value.endpoint;
 
-        // Get data from heat pump
         const res = await this.client.get(endpoint);
 
         if (energyMonitoringCapabilities.includes(key)) {
           const currentHour = new Date().getHours();
-
-          // subtract 2 to account for array being zero based and to get last hours measurement
+          // -2 logic preserved from original code (likely due to timezones or API delay)
           const currentHourObject = res.recording[currentHour - 2];
-
           result = currentHourObject.y / currentHourObject.c;
         } else {
           result = res.value;
@@ -60,12 +84,13 @@ class HeatPumpDevice extends Device {
 
         this.updateValue(value.name, result);
       } catch (err) {
-        this.log(err);
+        // Suppress poll errors to keep logs clean
       }
     }
   }
 
   updateValue(capability, value) {
+    // Alarm logic
     if (capability === 'alarm_status') {
       value = value !== 'ok';
       if (this.getCapabilityValue(capability) !== value) {
@@ -73,8 +98,11 @@ class HeatPumpDevice extends Device {
       }
     }
 
-    this.log(`Setting capability [${capability}] value to: ${value}`);
-    this.setCapabilityValue(capability, value).catch(this.error);
+    // Only update Homey if the value actually changed
+    if (this.getCapabilityValue(capability) !== value) {
+        this.log(`Setting capability [${capability}] value to: ${value}`);
+        this.setCapabilityValue(capability, value).catch(this.error);
+    }
   }
 
   async triggerAlarmStatusChange(value) {
@@ -89,9 +117,6 @@ class HeatPumpDevice extends Device {
         };
 
         this.log('Alarm status has changed to error. Trigger ERROR card..');
-        this.log(`code: ${tokens.code}`);
-        this.log(`description: ${tokens.description}`);
-
         await this.homey.flow.getDeviceTriggerCard('alarm_status_error')
           .trigger(this, tokens);
       } catch (error) {
@@ -106,20 +131,11 @@ class HeatPumpDevice extends Device {
 
   async onAdded() {
     this.log('Device added');
-    this.log('Name:', this.getName());
-    this.log('Class:', this.getClass());
-    this.log('Data:', this.getData());
   }
 
   async onSettings({ oldSettings, newSettings, changedKeys }) {
     const { interval } = this;
-    for (const name of changedKeys) {
-      if (name !== 'password') {
-        this.log(`Setting '${name}' changed from '${oldSettings[name]}' to '${newSettings[name]}'`);
-      }
-    }
     if (oldSettings.interval !== newSettings.interval) {
-      this.log(`Deleting old interval of ${oldSettings.interval}s and creating new ${newSettings.interval}s`);
       clearInterval(interval);
       this.setUpdateInterval(newSettings.interval);
     }
@@ -130,28 +146,52 @@ class HeatPumpDevice extends Device {
       serialNumber: settings.serial,
       accessKey: settings.key,
       password: settings.password,
+      retryTimeout: 10000, 
+      maxRetries: 5
     });
+
+    // --- CRITICAL FIX: OVERRIDE PUT METHOD ---
+    // The library defaults to single newline (\n) for PUT requests,
+    // but IVT heat pumps require double newlines (\n\n) to parse the headers.
+    client.put = function(uri, data) {
+        const encrypted = this.encrypt(typeof data === 'string' ? data : JSON.stringify(data));
+        const separator = '\n\n'; // Force double newline
+        const message = this.buildMessage([
+          `PUT ${ uri } HTTP/1.1`,
+          `User-Agent: ${ this.USERAGENT }`,
+          `Content-Type: application/json`,
+          `Content-Length: ${ encrypted.length }`,
+          `Seq-No: ${ this.seqno++ }`,
+          ``,
+          encrypted
+        ].join(separator));
+
+        return this.send(message).then(response => {
+          const status = Number(response.statusCode || 500);
+          if (status >= 300) {
+            const error = new Error('INVALID_RESPONSE');
+            error.response = response;
+            throw error;
+          } else if (status === 204) {
+            response.body = null;
+          }
+          return response.body || { status : 'ok' };
+        });
+    };
+    // -----------------------------------------
 
     await client.connect();
     this.log('Device connected successfully to backend');
-
     return client;
-  }
-
-  async onRenamed(name) {
-    this.log(`${name} renamed`);
   }
 
   async onDeleted() {
     const { interval } = this;
-    this.log(`${this.data.id} deleted`);
     if (this.client) {
       this.client.end();
     }
-
     clearInterval(interval);
   }
-
 }
 
 module.exports = HeatPumpDevice;
