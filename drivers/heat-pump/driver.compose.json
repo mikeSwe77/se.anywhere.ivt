@@ -1,12 +1,14 @@
 {
   "name": { "en": "Heat pump" },
-  "class": "heater",
+  "class": "thermostat",
+  "statusIndicator": "measure_temperature",
   "capabilities": [
+    "target_temperature",
+    "measure_temperature",
     "measure_temperature.supply",
     "measure_temperature.return",
     "measure_temperature.outdoor",
     "measure_temperature.water",
-    "target_temperature",
     "ivt_hotwater_mode",
     "hotwater_boost",
     "alarm_status",
@@ -15,14 +17,25 @@
     "meter_power.last_hour_compressor"
   ],
   "capabilitiesOptions": {
-    "measure_temperature.supply": { "title": { "en": "Supply temperature", "sv": "Framledningstemperatur" } },
-    "measure_temperature.return": { "title": { "en": "Return temperature", "sv": "Returtemperatur" } },
-    "measure_temperature.outdoor": { "title": { "en": "Outdoor temperature", "sv": "Utomhustemperatur" } },
-    "measure_temperature.water": { "title": { "en": "Hotwater", "sv": "Varmvatten" } },
+    "measure_temperature": {
+      "title": { "en": "Room Temperature", "sv": "Rumstemperatur" },
+      "zones": [
+        { "from": 0, "to": 10, "color": "#0000FF" },
+        { "from": 10, "to": 15, "color": "#00BFFF" },
+        { "from": 15, "to": 18, "color": "#00FF00" },
+        { "from": 18, "to": 21, "color": "#FFFF00" },
+        { "from": 21, "to": 25, "color": "#FFA500" },
+        { "from": 25, "to": 35, "color": "#FF0000" }
+      ]
+    },
     "target_temperature": {
       "title": { "en": "Target Temperature", "sv": "Måltemperatur" },
       "min": 10, "max": 30, "step": 0.5
     },
+    "measure_temperature.supply": { "title": { "en": "Supply temperature", "sv": "Framledningstemperatur" } },
+    "measure_temperature.return": { "title": { "en": "Return temperature", "sv": "Returtemperatur" } },
+    "measure_temperature.outdoor": { "title": { "en": "Outdoor temperature", "sv": "Utomhustemperatur" } },
+    "measure_temperature.water": { "title": { "en": "Hotwater", "sv": "Varmvatten" } },
     "ivt_hotwater_mode": { "title": { "en": "Hotwater Mode", "sv": "Varmvattenläge" } },
     "hotwater_boost": { "title": { "en": "Extra Hot Water", "sv": "Extra Varmvatten" } },
     "meter_power.last_hour_eheater": { "title": { "en": "Last hour (eheater)", "sv": "Senaste timmen (elpatron)" } },

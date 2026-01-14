@@ -8,27 +8,28 @@ const ErrorCodes = require('../../lib/errorcodes');
 class HeatPumpDevice extends Device {
 
   async onInit() {
+    this.data = this.getData();
+    this.isWriting = false;
+
+    // Initialize the client using user settings
     try {
       this.client = await this.getClient(this.getSettings());
     } catch (e) {
       this.log(`Unable to initialize device: ${e.message}`);
-      throw e;
     }
 
-    const updateInterval = Number(this.getSetting('interval')) * 1000;
-    this.data = this.getData();
-    this.isWriting = false;
-
-    // Register listeners with NEW capability name
+    // Register Capability Listeners
     this.registerCapabilityListener('target_temperature', this.onCapabilityTargetTemperature.bind(this));
     this.registerCapabilityListener('ivt_hotwater_mode', this.onCapabilityHotWaterMode.bind(this));
     this.registerCapabilityListener('hotwater_boost', this.onCapabilityHotWaterBoost.bind(this));
 
-    this.log(`[${this.getName()}][${this.data.id}]`, `Update Interval: ${updateInterval}`);
-    
+    // Setup Polling
+    const updateInterval = Number(this.getSetting('interval')) * 1000;
+    this.log(`[${this.getName()}] Update Interval: ${updateInterval}ms`);
+
+    // Initial Data Fetch (Delayed 2s to ensure SSL stability)
     setTimeout(() => {
-        this.log('Performing initial data fetch...');
-        this.getDeviceData().catch(err => this.log('Startup fetch failed:', err));
+        this.getDeviceData().catch(err => this.error('Startup fetch failed:', err));
     }, 2000);
 
     this.interval = setInterval(async () => {
@@ -41,6 +42,7 @@ class HeatPumpDevice extends Device {
   }
 
   // --- CONTROL HANDLERS ---
+
   async onCapabilityTargetTemperature(value) {
     this.isWriting = true;
     const endpoint = '/heatingCircuits/hc1/temperatureRoomSetpoint';
@@ -51,7 +53,7 @@ class HeatPumpDevice extends Device {
         return Promise.resolve();
       } else { throw new Error('Client not ready'); }
     } catch (err) {
-      this.log('Failed to set target temperature:', err);
+      this.error('Failed to set target temperature:', err);
       return Promise.reject(err);
     } finally { this.isWriting = false; }
   }
@@ -61,11 +63,10 @@ class HeatPumpDevice extends Device {
     const endpoint = '/dhwCircuits/dhw1/operationMode';
     const payload = { value: value };
     try {
-        this.log(`Setting Hot Water Mode to ${value}`);
         await this.client.put(endpoint, payload);
         return Promise.resolve();
     } catch (err) {
-        this.log('Failed to set Hot Water Mode:', err);
+        this.error('Failed to set Hot Water Mode:', err);
         return Promise.reject(err);
     } finally { this.isWriting = false; }
   }
@@ -75,19 +76,19 @@ class HeatPumpDevice extends Device {
     const endpoint = '/dhwCircuits/dhw1/charge';
     const payload = { value: 'start' }; 
     try {
-        this.log(`Triggering Extra Hot Water (Charge)`);
         await this.client.put(endpoint, payload);
         setTimeout(() => {
              this.setCapabilityValue('hotwater_boost', false).catch(this.error);
         }, 2000);
         return Promise.resolve();
     } catch (err) {
-        this.log('Failed to trigger Hot Water Boost:', err);
+        this.error('Failed to trigger Hot Water Boost:', err);
         return Promise.reject(err);
     } finally { this.isWriting = false; }
   }
 
   // --- DATA FETCHING ---
+
   async getDeviceData() {
     for (const [key, value] of Object.entries(Capabilities)) {
       if (this.isWriting) break;
@@ -105,9 +106,13 @@ class HeatPumpDevice extends Device {
           result = currentHourObject.y / currentHourObject.c;
         } else {
           result = res.value;
+          // Ensure Number type for temperatures to support Thermostat Dial
+          if (typeof result === 'string' && !isNaN(result)) {
+             result = parseFloat(result);
+          }
         }
         this.updateValue(value.name, result);
-      } catch (err) { }
+      } catch (err) { } 
     }
 
     if (!this.isWriting) {
@@ -116,21 +121,16 @@ class HeatPumpDevice extends Device {
             if (res && res.value) {
                 let mode = res.value;
                 if (typeof mode === 'string') mode = mode.toLowerCase();
-                
-                this.log(`DEBUG: Updating capability 'ivt_hotwater_mode' to value: "${mode}"`);
-                // Use NEW capability name
                 this.updateValue('ivt_hotwater_mode', mode);
             }
-        } catch (err) { 
-            this.log('DEBUG: Error fetching Hot Water Mode:', err.message);
-        }
+        } catch (err) { }
     }
     
     if (!this.isWriting) {
         try {
             const res = await this.client.get('/heatingCircuits/hc1/temperatureRoomSetpoint');
             if (res && res.value) {
-                this.updateValue('target_temperature', res.value);
+                this.updateValue('target_temperature', parseFloat(res.value));
             }
         } catch (err) { }
     }
@@ -162,7 +162,7 @@ class HeatPumpDevice extends Device {
             .join(', '),
         };
         await this.homey.flow.getDeviceTriggerCard('alarm_status_error').trigger(this, tokens);
-      } catch (error) { this.log(error); }
+      } catch (error) { this.error(error); }
     } else if (this.getCapabilityValue('alarm_status') === 'error') {
       this.homey.flow.getDeviceTriggerCard('alarm_status_ok').trigger(this).catch(this.error);
     }
@@ -175,23 +175,26 @@ class HeatPumpDevice extends Device {
       clearInterval(this.interval);
       this.setUpdateInterval(newSettings.interval);
     }
+    // Reconnect if credentials changed
+    if (oldSettings.serial !== newSettings.serial || oldSettings.key !== newSettings.key || oldSettings.password !== newSettings.password) {
+        if (this.client) this.client.end();
+        this.client = await this.getClient(newSettings);
+    }
   }
 
   async getClient(settings) {
-    const devSettings = { serial: '176431053', key: 'PzXSw556pA645SKf', password: 'Es7eBX88hUUKWph' };
-    const serial = (settings.serial && settings.serial.length > 5) ? settings.serial : devSettings.serial;
-    const key = (settings.key && settings.key.length > 5) ? settings.key : devSettings.key;
-    const password = (settings.password && settings.password.length > 5) ? settings.password : devSettings.password;
-
     const client = IVTClient({
-      serialNumber: serial,
-      accessKey: key,
-      password: password,
+      serialNumber: settings.serial,
+      accessKey: settings.key,
+      password: settings.password,
       retryTimeout: 10000, 
       maxRetries: 5
     });
 
-    client.on('error', (err) => { this.log('XMPP Client Error:', err.message); });
+    client.on('error', (err) => { 
+        // Log basic error message but prevent app crash
+        this.error('XMPP Client Error:', err.message); 
+    });
 
     client.put = function(uri, data) {
         const encrypted = this.encrypt(typeof data === 'string' ? data : JSON.stringify(data));
@@ -218,7 +221,7 @@ class HeatPumpDevice extends Device {
     };
 
     await client.connect();
-    this.log(`Device connected successfully (Serial: ${serial})`);
+    this.log(`Device connected`);
     return client;
   }
 
