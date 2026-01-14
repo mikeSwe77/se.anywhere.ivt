@@ -1,6 +1,6 @@
 {
   "name": { "en": "Heat pump" },
-  "class": "thermostat",
+  "class": "heatpump",
   "statusIndicator": "measure_temperature",
   "capabilities": [
     "target_temperature",
