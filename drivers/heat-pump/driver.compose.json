@@ -1,7 +1,5 @@
 {
-  "name": {
-    "en": "Heat pump"
-  },
+  "name": { "en": "Heat pump" },
   "class": "heater",
   "capabilities": [
     "measure_temperature.supply",
@@ -9,78 +7,34 @@
     "measure_temperature.outdoor",
     "measure_temperature.water",
     "target_temperature",
+    "ivt_hotwater_mode",
+    "hotwater_boost",
     "alarm_status",
     "meter_power.last_hour_eheater",
     "meter_power.last_hour_total",
     "meter_power.last_hour_compressor"
   ],
   "capabilitiesOptions": {
-    "measure_temperature.supply": {
-      "title": {
-        "en": "Supply temperature",
-        "sv": "Framledningstemperatur"
-      }
-    },
-    "measure_temperature.return": {
-      "title": {
-        "en": "Return temperature",
-        "sv": "Returtemperatur"
-      }
-    },
-    "measure_temperature.outdoor": {
-      "title": {
-        "en": "Outdoor temperature",
-        "sv": "Utomhustemperatur"
-      }
-    },
-    "measure_temperature.water": {
-      "title": {
-        "en": "Water temperature",
-        "sv": "Vattentemperatur"
-      }
-    },
+    "measure_temperature.supply": { "title": { "en": "Supply temperature", "sv": "Framledningstemperatur" } },
+    "measure_temperature.return": { "title": { "en": "Return temperature", "sv": "Returtemperatur" } },
+    "measure_temperature.outdoor": { "title": { "en": "Outdoor temperature", "sv": "Utomhustemperatur" } },
+    "measure_temperature.water": { "title": { "en": "Hotwater", "sv": "Varmvatten" } },
     "target_temperature": {
-      "title": {
-        "en": "Target Temperature",
-        "sv": "Måltemperatur"
-      },
-      "min": 16,
-      "max": 25,
-      "step": 0.5
+      "title": { "en": "Target Temperature", "sv": "Måltemperatur" },
+      "min": 10, "max": 30, "step": 0.5
     },
-    "meter_power.last_hour_eheater": {
-      "title": {
-        "en": "Last hour (eheater)",
-        "sv": "Senaste timmen (elpatron)"
-      }
-    },
-    "meter_power.last_hour_total": {
-      "title": {
-        "en": "Last hour (total)",
-        "sv": "Senaste timmen (totalt)"
-      }
-    },
-    "meter_power.last_hour_compressor": {
-      "title": {
-        "en": "Last hour (compressor)",
-        "sv": "Senaste timmen (kompressor)"
-      }
-    }
+    "ivt_hotwater_mode": { "title": { "en": "Hotwater Mode", "sv": "Varmvattenläge" } },
+    "hotwater_boost": { "title": { "en": "Extra Hot Water", "sv": "Extra Varmvatten" } },
+    "meter_power.last_hour_eheater": { "title": { "en": "Last hour (eheater)", "sv": "Senaste timmen (elpatron)" } },
+    "meter_power.last_hour_total": { "title": { "en": "Last hour (total)", "sv": "Senaste timmen (totalt)" } },
+    "meter_power.last_hour_compressor": { "title": { "en": "Last hour (compressor)", "sv": "Senaste timmen (kompressor)" } }
   },
-  "platforms": [
-    "local"
-  ],
-  "connectivity": [
-    "lan"
-  ],
+  "platforms": ["local"],
+  "connectivity": ["lan"],
   "images": {
     "small": "{{driverAssetsPath}}/images/small.png",
     "large": "{{driverAssetsPath}}/images/large.png",
     "xlarge": "{{driverAssetsPath}}/images/xlarge.png"
   },
-  "pair": [
-    {
-      "id": "pair"
-    }
-  ]
+  "pair": [{ "id": "pair" }]
 }

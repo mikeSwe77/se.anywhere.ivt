@@ -1,0 +1,33 @@
+{
+  "type": "enum",
+  "title": {
+    "en": "Hot Water Mode",
+    "sv": "Varmvattenläge"
+  },
+  "uiComponent": "picker",
+  "getable": true,
+  "setable": true,
+  "values": [
+    {
+      "id": "eco",
+      "title": {
+        "en": "Eco",
+        "sv": "Eco"
+      }
+    },
+    {
+      "id": "high",
+      "title": {
+        "en": "High",
+        "sv": "Hög"
+      }
+    },
+    {
+      "id": "low",
+      "title": {
+        "en": "Low",
+        "sv": "Låg"
+      }
+    }
+  ]
+}
