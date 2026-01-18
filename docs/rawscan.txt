@@ -1120,7 +1120,7 @@ data:
         recordable: 0
         recordedResource:
           id: /system/sensors/temperatures/outdoor_t1
-          uri: http://192.168.7.67/system/sensors/temperatures/outdoor_t1
+          uri: http://<REDACTED_DEVICE>/system/sensors/temperatures/outdoor_t1
         interval: 2026-1-12
         sampleRate: P1H
         recording-type: actual
