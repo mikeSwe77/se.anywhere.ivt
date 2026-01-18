@@ -71,21 +71,23 @@ class HeatPumpDevice extends Device {
     } finally { this.isWriting = false; }
   }
 
-  async onCapabilityHotWaterBoost(value) {
-    this.isWriting = true;
-    const endpoint = '/dhwCircuits/dhw1/charge';
+    async onCapabilityHotWaterBoost(value) {  
+    if (!value) return;  
+    this.isWriting = true;  
+    const endpoint = '/dhwCircuits/dhw1/charge';  
     const payload = { value: 'start' }; 
-    try {
-        await this.client.put(endpoint, payload);
-        setTimeout(() => {
-             this.setCapabilityValue('hotwater_boost', false).catch(this.error);
-        }, 2000);
-        return Promise.resolve();
-    } catch (err) {
-        this.error('Failed to trigger Hot Water Boost:', err);
-        return Promise.reject(err);
-    } finally { this.isWriting = false; }
-  }
+    try {  
+        await this.client.put(endpoint, payload);  
+        setTimeout(() => {  
+             this.setCapabilityValue('hotwater_boost', false).catch(this.error);  
+        }, 2000);  
+        return Promise.resolve();  
+    } catch (err) {  
+        this.error('Failed to trigger Hot Water Boost:', err);  
+        return Promise.reject(err);  
+    } finally { this.isWriting = false; }  
+  }  
+
 
   // --- DATA FETCHING ---
 
@@ -101,9 +103,12 @@ class HeatPumpDevice extends Device {
         const res = await this.client.get(endpoint);
 
         if (value.name.includes('meter_power')) {
-          const currentHour = new Date().getHours();
-          const currentHourObject = res.recording[currentHour - 2];
-          result = currentHourObject.y / currentHourObject.c;
+          const currentHour = new Date().getHours();  
+          const idx = Math.max(0, currentHour - 2);  
+          const currentHourObject = res.recording?.[idx];  
+          if (!currentHourObject || !currentHourObject.c) { continue; }  
+          result = currentHourObject.y / currentHourObject.c;  
+
         } else {
           result = res.value;
           // Ensure Number type for temperatures to support Thermostat Dial
@@ -163,8 +168,8 @@ class HeatPumpDevice extends Device {
         };
         await this.homey.flow.getDeviceTriggerCard('alarm_status_error').trigger(this, tokens);
       } catch (error) { this.error(error); }
-    } else if (this.getCapabilityValue('alarm_status') === 'error') {
-      this.homey.flow.getDeviceTriggerCard('alarm_status_ok').trigger(this).catch(this.error);
+    } else if (this.getCapabilityValue('alarm_status') === true) {  
+      this.homey.flow.getDeviceTriggerCard('alarm_status_ok').trigger(this).catch(this.error);  
     }
   }
 
@@ -173,8 +178,13 @@ class HeatPumpDevice extends Device {
   async onSettings({ oldSettings, newSettings, changedKeys }) {
     if (oldSettings.interval !== newSettings.interval) {
       clearInterval(this.interval);
-      this.setUpdateInterval(newSettings.interval);
-    }
+      this.interval = setInterval(async () => {  
+        if (!this.isWriting) {  
+          await this.getDeviceData();  
+        }  
+      }, newSettings.interval * 1000);  
+
+}
     // Reconnect if credentials changed
     if (oldSettings.serial !== newSettings.serial || oldSettings.key !== newSettings.key || oldSettings.password !== newSettings.password) {
         if (this.client) this.client.end();
