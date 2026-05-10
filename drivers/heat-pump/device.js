@@ -11,6 +11,13 @@ class HeatPumpDevice extends Device {
     this.data = this.getData();
     this.isWriting = false;
 
+    // Add capabilities introduced after initial pairing
+    for (const cap of ['compressor_active', 'pump_modulation', 'measure_temperature.water_setpoint']) {
+      if (!this.hasCapability(cap)) {
+        await this.addCapability(cap).catch(this.error);
+      }
+    }
+
     // Initialize the client using user settings
     try {
       this.client = await this.getClient(this.getSettings());
