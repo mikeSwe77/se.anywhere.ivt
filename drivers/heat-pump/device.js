@@ -11,11 +11,19 @@ class HeatPumpDevice extends Device {
     this.data = this.getData();
     this.isWriting = false;
 
+    // Add capabilities introduced after initial pairing
+    for (const cap of ['compressor_active', 'pump_modulation', 'measure_temperature.water_setpoint']) {
+      if (!this.hasCapability(cap)) {
+        await this.addCapability(cap).catch(this.error);
+      }
+    }
+
     // Initialize the client using user settings
     try {
       this.client = await this.getClient(this.getSettings());
     } catch (e) {
-      this.log(`Unable to initialize device: ${e.message}`);
+      this.error(`Unable to initialize device: ${e.message}`);
+      this.setUnavailable(e.message).catch(this.error);
     }
 
     // Register Capability Listeners
@@ -63,30 +71,34 @@ class HeatPumpDevice extends Device {
     const endpoint = '/dhwCircuits/dhw1/operationMode';
     const payload = { value: value };
     try {
+      if (this.client && typeof this.client.put === 'function') {
         await this.client.put(endpoint, payload);
         return Promise.resolve();
+      } else { throw new Error('Client not ready'); }
     } catch (err) {
-        this.error('Failed to set Hot Water Mode:', err);
-        return Promise.reject(err);
+      this.error('Failed to set Hot Water Mode:', err);
+      return Promise.reject(err);
     } finally { this.isWriting = false; }
   }
 
-    async onCapabilityHotWaterBoost(value) {  
-    if (!value) return;  
-    this.isWriting = true;  
-    const endpoint = '/dhwCircuits/dhw1/charge';  
-    const payload = { value: 'start' }; 
-    try {  
-        await this.client.put(endpoint, payload);  
-        setTimeout(() => {  
-             this.setCapabilityValue('hotwater_boost', false).catch(this.error);  
-        }, 2000);  
-        return Promise.resolve();  
-    } catch (err) {  
-        this.error('Failed to trigger Hot Water Boost:', err);  
-        return Promise.reject(err);  
-    } finally { this.isWriting = false; }  
-  }  
+  async onCapabilityHotWaterBoost(value) {
+    if (!value) return;
+    this.isWriting = true;
+    const endpoint = '/dhwCircuits/dhw1/charge';
+    const payload = { value: 'start' };
+    try {
+      if (this.client && typeof this.client.put === 'function') {
+        await this.client.put(endpoint, payload);
+        setTimeout(() => {
+          this.setCapabilityValue('hotwater_boost', false).catch(this.error);
+        }, 2000);
+        return Promise.resolve();
+      } else { throw new Error('Client not ready'); }
+    } catch (err) {
+      this.error('Failed to trigger Hot Water Boost:', err);
+      return Promise.reject(err);
+    } finally { this.isWriting = false; }
+  }
 
 
   // --- DATA FETCHING ---
@@ -117,27 +129,36 @@ class HeatPumpDevice extends Device {
           }
         }
         this.updateValue(value.name, result);
-      } catch (err) { } 
+      } catch (err) { this.log(`Failed to fetch ${value.name}:`, err.message); }
     }
 
     if (!this.isWriting) {
-        try {
-            const res = await this.client.get('/dhwCircuits/dhw1/operationMode');
-            if (res && res.value) {
-                let mode = res.value;
-                if (typeof mode === 'string') mode = mode.toLowerCase();
-                this.updateValue('ivt_hotwater_mode', mode);
-            }
-        } catch (err) { }
+      try {
+        const res = await this.client.get('/dhwCircuits/dhw1/operationMode');
+        if (res && res.value) {
+          let mode = res.value;
+          if (typeof mode === 'string') mode = mode.toLowerCase();
+          this.updateValue('ivt_hotwater_mode', mode);
+        }
+      } catch (err) { this.log('Failed to fetch ivt_hotwater_mode:', err.message); }
     }
-    
+
     if (!this.isWriting) {
-        try {
-            const res = await this.client.get('/heatingCircuits/hc1/temperatureRoomSetpoint');
-            if (res && res.value) {
-                this.updateValue('target_temperature', parseFloat(res.value));
-            }
-        } catch (err) { }
+      try {
+        const res = await this.client.get('/heatingCircuits/hc1/temperatureRoomSetpoint');
+        if (res && res.value) {
+          this.updateValue('target_temperature', parseFloat(res.value));
+        }
+      } catch (err) { this.log('Failed to fetch target_temperature:', err.message); }
+    }
+
+    if (!this.isWriting) {
+      try {
+        const res = await this.client.get('/heatSources/flameStatus');
+        if (res && res.value !== undefined) {
+          this.updateValue('compressor_active', res.value === 'on');
+        }
+      } catch (err) { this.log('Failed to fetch compressor_active:', err.message); }
     }
   }
 
@@ -163,7 +184,7 @@ class HeatPumpDevice extends Device {
         const tokens = {
           code: res.values.map((obj) => obj.ccd).join(', '),
           description: res.values
-            .map((obj) => `${obj.ccd}: ${ErrorCodes[obj.ccd].description}`)
+            .map((obj) => `${obj.ccd}: ${ErrorCodes[obj.ccd]?.description ?? 'Unknown error'}`)
             .join(', '),
         };
         await this.homey.flow.getDeviceTriggerCard('alarm_status_error').trigger(this, tokens);
@@ -178,17 +199,17 @@ class HeatPumpDevice extends Device {
   async onSettings({ oldSettings, newSettings, changedKeys }) {
     if (oldSettings.interval !== newSettings.interval) {
       clearInterval(this.interval);
-      this.interval = setInterval(async () => {  
-        if (!this.isWriting) {  
-          await this.getDeviceData();  
-        }  
-      }, newSettings.interval * 1000);  
+      this.interval = setInterval(async () => {
+        if (!this.isWriting) {
+          await this.getDeviceData();
+        }
+      }, newSettings.interval * 1000);
+    }
 
-}
     // Reconnect if credentials changed
     if (oldSettings.serial !== newSettings.serial || oldSettings.key !== newSettings.key || oldSettings.password !== newSettings.password) {
-        if (this.client) this.client.end();
-        this.client = await this.getClient(newSettings);
+      if (this.client) this.client.end();
+      this.client = await this.getClient(newSettings);
     }
   }
 

@@ -3,7 +3,7 @@
     "type": "group",
     "label": {
       "en": "Server settings",
-      "se": "Serverinställningar"
+      "sv": "Serverinställningar"
     },
     "children": [
       {
