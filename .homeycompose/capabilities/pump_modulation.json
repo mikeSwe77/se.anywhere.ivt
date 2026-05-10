@@ -1,0 +1,14 @@
+{
+  "type": "number",
+  "title": {
+    "en": "Pump Modulation",
+    "sv": "Pumputnyttjande"
+  },
+  "uiComponent": "sensor",
+  "getable": true,
+  "setable": false,
+  "units": "%",
+  "min": 0,
+  "max": 100,
+  "decimals": 0
+}

@@ -14,7 +14,10 @@
     "alarm_status",
     "meter_power.last_hour_eheater",
     "meter_power.last_hour_total",
-    "meter_power.last_hour_compressor"
+    "meter_power.last_hour_compressor",
+    "compressor_active",
+    "pump_modulation",
+    "measure_temperature.water_setpoint"
   ],
   "capabilitiesOptions": {
     "measure_temperature": {
@@ -40,7 +43,10 @@
     "hotwater_boost": { "title": { "en": "Extra Hot Water", "sv": "Extra Varmvatten" } },
     "meter_power.last_hour_eheater": { "title": { "en": "Last hour (eheater)", "sv": "Senaste timmen (elpatron)" } },
     "meter_power.last_hour_total": { "title": { "en": "Last hour (total)", "sv": "Senaste timmen (totalt)" } },
-    "meter_power.last_hour_compressor": { "title": { "en": "Last hour (compressor)", "sv": "Senaste timmen (kompressor)" } }
+    "meter_power.last_hour_compressor": { "title": { "en": "Last hour (compressor)", "sv": "Senaste timmen (kompressor)" } },
+    "compressor_active": { "title": { "en": "Compressor Active", "sv": "Kompressor aktiv" } },
+    "pump_modulation": { "title": { "en": "Pump Modulation", "sv": "Pumputnyttjande" } },
+    "measure_temperature.water_setpoint": { "title": { "en": "Hotwater Setpoint", "sv": "Varmvattenbörvärde" } }
   },
   "platforms": ["local"],
   "connectivity": ["lan"],

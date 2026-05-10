@@ -144,6 +144,15 @@ class HeatPumpDevice extends Device {
         }
       } catch (err) { this.log('Failed to fetch target_temperature:', err.message); }
     }
+
+    if (!this.isWriting) {
+      try {
+        const res = await this.client.get('/heatSources/flameStatus');
+        if (res && res.value !== undefined) {
+          this.updateValue('compressor_active', res.value === 'on');
+        }
+      } catch (err) { this.log('Failed to fetch compressor_active:', err.message); }
+    }
   }
 
   async updateValue(capability, value) {

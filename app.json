@@ -136,7 +136,10 @@
         "alarm_status",
         "meter_power.last_hour_eheater",
         "meter_power.last_hour_total",
-        "meter_power.last_hour_compressor"
+        "meter_power.last_hour_compressor",
+        "compressor_active",
+        "pump_modulation",
+        "measure_temperature.water_setpoint"
       ],
       "capabilitiesOptions": {
         "measure_temperature": {
@@ -239,6 +242,24 @@
             "en": "Last hour (compressor)",
             "sv": "Senaste timmen (kompressor)"
           }
+        },
+        "compressor_active": {
+          "title": {
+            "en": "Compressor Active",
+            "sv": "Kompressor aktiv"
+          }
+        },
+        "pump_modulation": {
+          "title": {
+            "en": "Pump Modulation",
+            "sv": "Pumputnyttjande"
+          }
+        },
+        "measure_temperature.water_setpoint": {
+          "title": {
+            "en": "Hotwater Setpoint",
+            "sv": "Varmvattenbörvärde"
+          }
         }
       },
       "platforms": [
@@ -330,6 +351,38 @@
     }
   ],
   "capabilities": {
+    "compressor_active": {
+      "type": "boolean",
+      "title": {
+        "en": "Compressor Active",
+        "sv": "Kompressor aktiv"
+      },
+      "uiComponent": "sensor",
+      "getable": true,
+      "setable": false,
+      "insightsTitleTrue": {
+        "en": "Compressor is active",
+        "sv": "Kompressorn är aktiv"
+      },
+      "insightsTitleFalse": {
+        "en": "Compressor is inactive",
+        "sv": "Kompressorn är inaktiv"
+      }
+    },
+    "pump_modulation": {
+      "type": "number",
+      "title": {
+        "en": "Pump Modulation",
+        "sv": "Pumputnyttjande"
+      },
+      "uiComponent": "sensor",
+      "getable": true,
+      "setable": false,
+      "units": "%",
+      "min": 0,
+      "max": 100,
+      "decimals": 0
+    },
     "alarm_status": {
       "type": "boolean",
       "title": {
