@@ -33,7 +33,11 @@ class HeatPumpDriver extends Homey.Driver {
   }
 
   async validateDevice(data) {
-    this.log(`Validating device: serial=${data.settings.serial}, key=${data.settings.key?.slice(0,4)}****`);
+    const key = data.settings.key || '';
+    const pwd = data.settings.password || '';
+    this.log(`Validating device: serial=${data.settings.serial}`);
+    this.log(`  key length=${key.length}, key (no dashes)=${key.replace(/-/g,'').slice(0,6)}...`);
+    this.log(`  password length=${pwd.length}, password starts=${pwd.slice(0,2)}...`);
 
     // Check and see if we can connect to the backend with the supplied credentials.
     let client;
