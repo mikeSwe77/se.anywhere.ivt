@@ -17,8 +17,12 @@
     "meter_power.last_hour_compressor",
     "compressor_active",
     "pump_modulation",
-    "measure_temperature.water_setpoint"
+    "measure_temperature.water_setpoint",
+    "meter_power"
   ],
+  "energy": {
+    "meterPowerImportedCapability": "meter_power"
+  },
   "capabilitiesOptions": {
     "measure_temperature": {
       "title": { "en": "Room Temperature", "sv": "Rumstemperatur" },
@@ -46,7 +50,8 @@
     "meter_power.last_hour_compressor": { "title": { "en": "Last hour (compressor)", "sv": "Senaste timmen (kompressor)" } },
     "compressor_active": { "title": { "en": "Compressor Active", "sv": "Kompressor aktiv" } },
     "pump_modulation": { "title": { "en": "Pump Modulation", "sv": "Pumputnyttjande" } },
-    "measure_temperature.water_setpoint": { "title": { "en": "Hotwater Setpoint", "sv": "Varmvattenbörvärde" } }
+    "measure_temperature.water_setpoint": { "title": { "en": "Hotwater Setpoint", "sv": "Varmvattenbörvärde" } },
+    "meter_power": { "title": { "en": "Total energy consumed", "sv": "Total energiförbrukning" } }
   },
   "platforms": ["local"],
   "connectivity": ["lan"],
