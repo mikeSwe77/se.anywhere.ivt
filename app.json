@@ -139,8 +139,12 @@
         "meter_power.last_hour_compressor",
         "compressor_active",
         "pump_modulation",
-        "measure_temperature.water_setpoint"
+        "measure_temperature.water_setpoint",
+        "meter_power"
       ],
+      "energy": {
+        "meterPowerImportedCapability": "meter_power"
+      },
       "capabilitiesOptions": {
         "measure_temperature": {
           "title": {
@@ -259,6 +263,12 @@
           "title": {
             "en": "Hotwater Setpoint",
             "sv": "Varmvattenbörvärde"
+          }
+        },
+        "meter_power": {
+          "title": {
+            "en": "Total energy consumed",
+            "sv": "Total energiförbrukning"
           }
         }
       },

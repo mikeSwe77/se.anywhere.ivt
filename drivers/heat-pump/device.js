@@ -12,7 +12,7 @@ class HeatPumpDevice extends Device {
     this.isWriting = false;
 
     // Add capabilities introduced after initial pairing
-    for (const cap of ['compressor_active', 'pump_modulation', 'measure_temperature.water_setpoint']) {
+    for (const cap of ['compressor_active', 'pump_modulation', 'measure_temperature.water_setpoint', 'meter_power']) {
       if (!this.hasCapability(cap)) {
         await this.addCapability(cap).catch(this.error);
       }
@@ -160,6 +160,46 @@ class HeatPumpDevice extends Device {
         }
       } catch (err) { this.log('Failed to fetch compressor_active:', err.message); }
     }
+
+    if (!this.isWriting) {
+      await this.updateCumulativeEnergy();
+    }
+  }
+
+  async updateCumulativeEnergy() {
+    const today = new Date().toISOString().split('T')[0];
+    const lastDate = this.getStoreValue('energy_last_date');
+
+    // Day rollover: add the previous day's complete total to the running base
+    if (lastDate && lastDate !== today) {
+      try {
+        const res = await this.client.get(
+          `/recordings/heatSources/total/energyMonitoring/consumedEnergy?interval=${lastDate}`
+        );
+        const dayTotal = (res.recording || []).reduce((sum, slot) => {
+          return sum + (slot.c > 0 ? slot.y / slot.c : 0);
+        }, 0);
+        const newBase = (this.getStoreValue('energy_base_kwh') || 0) + dayTotal;
+        await this.setStoreValue('energy_base_kwh', newBase);
+        this.log(`Energy rollover: added ${dayTotal.toFixed(3)} kWh for ${lastDate}, base now ${newBase.toFixed(3)} kWh`);
+      } catch (err) { this.log('Failed to roll over energy base:', err.message); }
+    }
+    await this.setStoreValue('energy_last_date', today);
+
+    // Sum completed hours of today and add to base
+    try {
+      const res = await this.client.get(
+        `/recordings/heatSources/total/energyMonitoring/consumedEnergy?interval=${today}`
+      );
+      const currentHour = new Date().getHours();
+      const completedHours = Math.max(0, currentHour - 1); // hours fully done
+      const todayPartial = (res.recording || [])
+        .slice(0, completedHours)
+        .reduce((sum, slot) => sum + (slot.c > 0 ? slot.y / slot.c : 0), 0);
+
+      const base = this.getStoreValue('energy_base_kwh') || 0;
+      this.updateValue('meter_power', Math.round((base + todayPartial) * 100) / 100);
+    } catch (err) { this.log('Failed to update meter_power:', err.message); }
   }
 
   async updateValue(capability, value) {
