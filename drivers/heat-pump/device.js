@@ -82,20 +82,16 @@ class HeatPumpDevice extends Device {
   }
 
   async onCapabilityHotWaterBoost(value) {
-    if (!value) return;
     this.isWriting = true;
     const endpoint = '/dhwCircuits/dhw1/charge';
-    const payload = { value: 'start' };
+    const payload = { value: value ? 'start' : 'stop' };
     try {
       if (this.client && typeof this.client.put === 'function') {
         await this.client.put(endpoint, payload);
-        setTimeout(() => {
-          this.setCapabilityValue('hotwater_boost', false).catch(this.error);
-        }, 2000);
         return Promise.resolve();
       } else { throw new Error('Client not ready'); }
     } catch (err) {
-      this.error('Failed to trigger Hot Water Boost:', err);
+      this.error('Failed to set Hot Water Boost:', err);
       return Promise.reject(err);
     } finally { this.isWriting = false; }
   }
@@ -159,6 +155,15 @@ class HeatPumpDevice extends Device {
           this.updateValue('compressor_active', res.value === 'on');
         }
       } catch (err) { this.log('Failed to fetch compressor_active:', err.message); }
+    }
+
+    if (!this.isWriting) {
+      try {
+        const res = await this.client.get('/dhwCircuits/dhw1/charge');
+        if (res && res.value !== undefined) {
+          this.updateValue('hotwater_boost', res.value === 'start');
+        }
+      } catch (err) { this.log('Failed to fetch hotwater_boost:', err.message); }
     }
 
     if (!this.isWriting) {
