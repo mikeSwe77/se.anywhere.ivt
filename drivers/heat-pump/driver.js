@@ -61,8 +61,8 @@ class HeatPumpDriver extends Homey.Driver {
 
     // Retrieve status to see if we can successfully load data from backend.
     try {
-      this.log('Fetching /gateway/versionFirmware to validate...');
-      const res = await client.get('/gateway/versionFirmware');
+      this.log('Fetching /heatingCircuits/hc1/roomtemperature to validate...');
+      const res = await client.get('/heatingCircuits/hc1/roomtemperature');
       this.log('Validation response:', JSON.stringify(res));
     } catch (e) {
       this.log('Validation fetch failed:', e.message);
