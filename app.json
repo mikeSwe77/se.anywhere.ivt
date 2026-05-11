@@ -115,6 +115,118 @@
         ],
         "id": "alarm_status_ok"
       }
+    ],
+    "actions": [
+      {
+        "id": "set_hotwater_mode",
+        "title": {
+          "en": "Set Hot Water Mode",
+          "sv": "Ställ in varmvattenläge"
+        },
+        "titleFormatted": {
+          "en": "Set Hot Water Mode on [[device]] to [[mode]]",
+          "sv": "Ställ in varmvattenläge på [[device]] till [[mode]]"
+        },
+        "hint": {
+          "en": "Set the hot water mode on the heat pump.",
+          "sv": "Ställ in varmvattenläge på värmepumpen."
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=heat-pump"
+          },
+          {
+            "type": "device",
+            "name": "device",
+            "title": {
+              "en": "Device",
+              "sv": "Enhet"
+            },
+            "filter": "driver_id=heat-pump"
+          },
+          {
+            "name": "mode",
+            "type": "dropdown",
+            "title": {
+              "en": "Mode",
+              "sv": "Läge"
+            },
+            "values": [
+              {
+                "id": "eco",
+                "label": {
+                  "en": "Eco",
+                  "sv": "Eco"
+                }
+              },
+              {
+                "id": "high",
+                "label": {
+                  "en": "High",
+                  "sv": "Hög"
+                }
+              },
+              {
+                "id": "low",
+                "label": {
+                  "en": "Low",
+                  "sv": "Låg"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "extra_hot_water",
+        "title": {
+          "en": "Extra Hot Water",
+          "sv": "Extra Varmvatten"
+        },
+        "titleFormatted": {
+          "en": "[[action]] Extra Hot Water on [[device]]",
+          "sv": "[[action]] extra varmvatten på [[device]]"
+        },
+        "hint": {
+          "en": "Request extra hot water from the heat pump.",
+          "sv": "Begär extra varmvatten från värmepumpen."
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=heat-pump"
+          },
+          {
+            "type": "device",
+            "name": "device",
+            "title": {
+              "en": "Device",
+              "sv": "Enhet"
+            },
+            "filter": "driver_id=heat-pump"
+          },
+          {
+            "name": "action",
+            "type": "dropdown",
+            "title": {
+              "en": "Action",
+              "sv": "Åtgärd"
+            },
+            "values": [
+              {
+                "id": "start",
+                "label": {
+                  "en": "Start",
+                  "sv": "Starta"
+                }
+              }
+            ]
+          }
+        ]
+      }
     ]
   },
   "drivers": [
@@ -140,7 +252,8 @@
         "compressor_active",
         "pump_modulation",
         "measure_temperature.water_setpoint",
-        "meter_power"
+        "meter_power",
+        "cop"
       ],
       "energy": {
         "meterPowerImportedCapability": "meter_power"
@@ -270,6 +383,12 @@
             "en": "Total energy consumed",
             "sv": "Total energiförbrukning"
           }
+        },
+        "cop": {
+          "title": {
+            "en": "COP",
+            "sv": "COP"
+          }
         }
       },
       "platforms": [
@@ -294,7 +413,7 @@
           "type": "group",
           "label": {
             "en": "Server settings",
-            "se": "Serverinställningar"
+            "sv": "Serverinställningar"
           },
           "children": [
             {
@@ -361,38 +480,6 @@
     }
   ],
   "capabilities": {
-    "compressor_active": {
-      "type": "boolean",
-      "title": {
-        "en": "Compressor Active",
-        "sv": "Kompressor aktiv"
-      },
-      "uiComponent": "sensor",
-      "getable": true,
-      "setable": false,
-      "insightsTitleTrue": {
-        "en": "Compressor is active",
-        "sv": "Kompressorn är aktiv"
-      },
-      "insightsTitleFalse": {
-        "en": "Compressor is inactive",
-        "sv": "Kompressorn är inaktiv"
-      }
-    },
-    "pump_modulation": {
-      "type": "number",
-      "title": {
-        "en": "Pump Modulation",
-        "sv": "Pumputnyttjande"
-      },
-      "uiComponent": "sensor",
-      "getable": true,
-      "setable": false,
-      "units": "%",
-      "min": 0,
-      "max": 100,
-      "decimals": 0
-    },
     "alarm_status": {
       "type": "boolean",
       "title": {
@@ -410,6 +497,24 @@
       "insightsTitleFalse": {
         "en": "The heat pump has no longer any active error",
         "sv": "Värmepumpen har inte längre någon aktiv felkod"
+      }
+    },
+    "compressor_active": {
+      "type": "boolean",
+      "title": {
+        "en": "Compressor Active",
+        "sv": "Kompressor aktiv"
+      },
+      "uiComponent": "sensor",
+      "getable": true,
+      "setable": false,
+      "insightsTitleTrue": {
+        "en": "Compressor is active",
+        "sv": "Kompressorn är aktiv"
+      },
+      "insightsTitleFalse": {
+        "en": "Compressor is inactive",
+        "sv": "Kompressorn är inaktiv"
       }
     },
     "hotwater_boost": {
@@ -455,6 +560,34 @@
           }
         }
       ]
+    },
+    "pump_modulation": {
+      "type": "number",
+      "title": {
+        "en": "Pump Modulation",
+        "sv": "Pumputnyttjande"
+      },
+      "uiComponent": "sensor",
+      "getable": true,
+      "setable": false,
+      "units": "%",
+      "min": 0,
+      "max": 100,
+      "decimals": 0
+    },
+    "cop": {
+      "type": "number",
+      "title": {
+        "en": "COP",
+        "sv": "COP"
+      },
+      "uiComponent": "sensor",
+      "getable": true,
+      "setable": false,
+      "units": "COP",
+      "min": 0,
+      "max": 20,
+      "decimals": 1
     }
   }
 }

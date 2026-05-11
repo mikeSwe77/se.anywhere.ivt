@@ -18,7 +18,8 @@
     "compressor_active",
     "pump_modulation",
     "measure_temperature.water_setpoint",
-    "meter_power"
+    "meter_power",
+    "cop"
   ],
   "energy": {
     "meterPowerImportedCapability": "meter_power"
@@ -51,7 +52,8 @@
     "compressor_active": { "title": { "en": "Compressor Active", "sv": "Kompressor aktiv" } },
     "pump_modulation": { "title": { "en": "Pump Modulation", "sv": "Pumputnyttjande" } },
     "measure_temperature.water_setpoint": { "title": { "en": "Hotwater Setpoint", "sv": "Varmvattenbörvärde" } },
-    "meter_power": { "title": { "en": "Total energy consumed", "sv": "Total energiförbrukning" } }
+    "meter_power": { "title": { "en": "Total energy consumed", "sv": "Total energiförbrukning" } },
+    "cop": { "title": { "en": "COP", "sv": "COP" } }
   },
   "platforms": ["local"],
   "connectivity": ["lan"],

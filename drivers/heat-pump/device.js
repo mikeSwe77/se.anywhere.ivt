@@ -12,7 +12,7 @@ class HeatPumpDevice extends Device {
     this.isWriting = false;
 
     // Add capabilities introduced after initial pairing
-    for (const cap of ['compressor_active', 'pump_modulation', 'measure_temperature.water_setpoint', 'meter_power']) {
+    for (const cap of ['compressor_active', 'pump_modulation', 'measure_temperature.water_setpoint', 'meter_power', 'cop']) {
       if (!this.hasCapability(cap)) {
         await this.addCapability(cap).catch(this.error);
       }
@@ -169,6 +169,10 @@ class HeatPumpDevice extends Device {
     if (!this.isWriting) {
       await this.updateCumulativeEnergy();
     }
+
+    if (!this.isWriting) {
+      await this.updateCOP();
+    }
   }
 
   async updateCumulativeEnergy() {
@@ -205,6 +209,26 @@ class HeatPumpDevice extends Device {
       const base = this.getStoreValue('energy_base_kwh') || 0;
       this.updateValue('meter_power', Math.round((base + todayPartial) * 100) / 100);
     } catch (err) { this.log('Failed to update meter_power:', err.message); }
+  }
+
+  async updateCOP() {
+    const today = new Date().toISOString().split('T')[0];
+    const currentHour = new Date().getHours();
+    const idx = Math.max(0, currentHour - 2);
+    try {
+      const [resConsumed, resOutput] = await Promise.all([
+        this.client.get(`/recordings/heatSources/total/energyMonitoring/consumedEnergy?interval=${today}`),
+        this.client.get(`/recordings/heatSources/total/energyMonitoring/outputProduced?interval=${today}`)
+      ]);
+      const consumed = resConsumed.recording?.[idx];
+      const output = resOutput.recording?.[idx];
+      if (!consumed || !output || consumed.c <= 0 || output.c <= 0) return;
+      const consumedKwh = consumed.y / consumed.c;
+      const outputKwh = output.y / output.c;
+      if (consumedKwh <= 0) return;
+      const cop = Math.round((outputKwh / consumedKwh) * 10) / 10;
+      this.updateValue('cop', cop);
+    } catch (err) { this.log('Failed to update COP:', err.message); }
   }
 
   async updateValue(capability, value) {
