@@ -173,6 +173,29 @@ class HeatPumpDevice extends Device {
     if (!this.isWriting) {
       await this.updateCOP();
     }
+
+    // TEMP DIAGNOSTIC: test /emon/ recording endpoints
+    if (!this.isWriting) {
+      const emonPaths = [
+        '/recordings/heatSources/emon/total/compressor',
+        '/recordings/heatSources/emon/total/eheater',
+        '/recordings/heatSources/emon/total/outputProduced',
+      ];
+      for (const path of emonPaths) {
+        try {
+          const res = await this.client.get(path);
+          const recording = res?.recording;
+          if (Array.isArray(recording) && recording.length > 0) {
+            const last = recording[recording.length - 1];
+            this.log(`[EMON] ${path} → last entry: y=${last.y}, c=${last.c}, d=${last.d} (${recording.length} entries)`);
+          } else {
+            this.log(`[EMON] ${path} → response: ${JSON.stringify(res)}`);
+          }
+        } catch (err) {
+          this.log(`[EMON] ${path} → ERROR: ${err.message}`);
+        }
+      }
+    }
   }
 
   async updateCumulativeEnergy() {
