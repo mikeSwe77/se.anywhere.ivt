@@ -33,12 +33,15 @@ class HeatPumpDriver extends Homey.Driver {
   }
 
   async validateDevice(data) {
+    this.log(`Validating device: serial=${data.settings.serial}, key=${data.settings.key?.slice(0,4)}****`);
+
     // Check and see if we can connect to the backend with the supplied credentials.
     let client;
     try {
       client = await Device.prototype.getClient.call(this, data.settings);
+      this.log('XMPP client connected successfully');
     } catch (e) {
-      this.log('unable to instantiate client:', e.message);
+      this.log('unable to instantiate client:', e.message, e.stack);
       throw new Error(e);
     }
 
@@ -58,8 +61,18 @@ class HeatPumpDriver extends Homey.Driver {
 
     // Retrieve status to see if we can successfully load data from backend.
     try {
-      await client.get('/gateway/versionFirmware');
+      this.log('Fetching /gateway/versionFirmware to validate...');
+      const res = await client.get('/gateway/versionFirmware');
+      this.log('Validation response:', JSON.stringify(res));
     } catch (e) {
+      this.log('Validation fetch failed:', e.message);
+      this.log('Error details:', JSON.stringify({
+        name: e.name,
+        message: e.message,
+        statusCode: e.statusCode || e.response?.statusCode,
+        body: e.response?.body,
+        stack: e.stack,
+      }));
       if (e instanceof SyntaxError) {
         this.log('invalid credentials');
         throw new Error('Invalid credentials');
