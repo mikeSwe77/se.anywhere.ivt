@@ -31,36 +31,30 @@
       </div>
 
       <!-- ── Step 2: Paste URL back ──────────────────────────────────────── -->
-      <div class="step-label" style="margin-top:16px">Step 2 — Paste the URL from Safari</div>
+      <div class="step-label" style="margin-top:16px">Step 2 — Get the authorization code</div>
 
       <p class="step-hint" id="hintDefault">
-        After logging in and clicking <strong>Continue</strong>, copy the full URL
-        that starts with <code>com.bosch.tt.dashtt.pointt://app/login?code=…</code>
-        and paste it below.
+        After logging in, copy <strong>any URL</strong> you see in the browser
+        address bar — the redirection page URL, the callback URL, or the final
+        <code>com.bosch.tt…</code> URL — and paste it below. The app will handle it.
       </p>
-      <p class="step-hint" style="margin-top:-4px">
-        <strong>Easiest way:</strong> do step 1 in <strong>Chrome</strong> with
-        DevTools open (F12) → <em>Network</em> tab → tick <em>Preserve log</em>.
-        After clicking Continue, find the last request to
-        <code>/authorize/callback</code>, open its <em>Response Headers</em>,
-        and copy the <code>Location</code> value.
+      <p class="step-hint step-hint--tip" style="margin-top:-4px">
+        <strong>Tip:</strong> use <strong>Chrome</strong> with DevTools (F12) →
+        <em>Network</em> → <em>Preserve log</em>. After clicking Continue, find
+        <code>/authorize/callback</code> → Response Headers → copy
+        <code>Location</code>. That URL starts with <code>com.bosch.tt…</code>.
       </p>
 
-      <!-- shown when a redirection-page URL is pasted instead of the deep link -->
+      <!-- shown when a redirection/callback URL is pasted — driver will try server-side -->
       <div id="hintRedirection" style="display:none">
         <p class="step-hint step-hint--success">
-          ✓ Login detected! Copy the URL below, open it in Safari.
-          When Safari shows a <em>"cannot open"</em> error, copy the URL from
-          Safari's address bar and paste it in the field below.
+          ✓ Login URL detected — click <strong>Connect</strong> and the app will
+          try to complete the sign-in automatically.
         </p>
-        <div class="url-row" style="margin-bottom: 10px">
-          <input class="homey-form-input url-display" id="codeUrlDisplay" type="text" readonly />
-          <button id="btnCopyCode" class="action-btn" title="Copy code URL">Copy</button>
-        </div>
       </div>
 
       <div class="homey-form-group">
-        <label class="homey-form-label" for="callbackUrl">URL from Safari address bar</label>
+        <label class="homey-form-label" for="callbackUrl">URL from browser address bar</label>
         <input class="homey-form-input" id="callbackUrl" type="text"
                placeholder="Paste URL here…" autocomplete="off" />
       </div>
@@ -135,13 +129,6 @@
       copyText(authUrl, this);
     });
 
-    // ── Copy code URL button ───────────────────────────────────────────────
-    document.getElementById('btnCopyCode').addEventListener('click', function() {
-      var url = document.getElementById('codeUrlDisplay').value;
-      if (!url) return;
-      copyText(url, this);
-    });
-
     // ── Detect URL type when user pastes ──────────────────────────────────
 
     // Case 1: sv-se/redirection or en-us/redirection page
@@ -173,15 +160,10 @@
       document.getElementById('callbackUrl').value = val;
 
       // Check for redirection page URL first, then bare callback URL
-      var codeUrl = parseRedirectionUrl(val) || (isCallbackWithoutCode(val) ? val : null);
-      var needsStep = !!codeUrl;
+      var needsStep = !!(parseRedirectionUrl(val) || isCallbackWithoutCode(val));
 
       document.getElementById('hintDefault').style.display     = needsStep ? 'none' : '';
       document.getElementById('hintRedirection').style.display = needsStep ? '' : 'none';
-
-      if (needsStep) {
-        document.getElementById('codeUrlDisplay').value = codeUrl;
-      }
     }
 
     document.getElementById('callbackUrl').addEventListener('input', onUrlInput);
@@ -194,10 +176,6 @@
       var val = document.getElementById('callbackUrl').value.trim();
       if (!val) { setStatus('Please paste the URL from Safari.', true); return; }
 
-      if (parseRedirectionUrl(val) || isCallbackWithoutCode(val)) {
-        setStatus('Please open the code URL shown above in Safari first, then paste the result.', true);
-        return;
-      }
 
       doConnect(val);
     });
@@ -235,6 +213,10 @@
     .step-hint--success {
       background: #f0faf0; border-left: 3px solid #4caf50;
       padding: 8px 10px; border-radius: 0 4px 4px 0; color: #2e7d32;
+    }
+    .step-hint--tip {
+      background: #fffde7; border-left: 3px solid #fbc02d;
+      padding: 8px 10px; border-radius: 0 4px 4px 0; color: #5d4037;
     }
     .url-row { display: flex; gap: 6px; align-items: center; }
     .url-display {
