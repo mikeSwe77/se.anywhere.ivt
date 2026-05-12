@@ -34,10 +34,11 @@ class HeatPumpDriver extends Homey.Driver {
         } catch (err) {
           this.log('Server-side completion failed:', err.message);
           throw new Error(
-            'Could not extract authorization code.\n' +
-            'In Chrome: open DevTools → Network tab → log in → click Continue → ' +
-            'find the request to /authorize/callback → copy the Location response header ' +
-            '(starts with com.bosch.tt.dashtt.pointt://) and paste that URL instead.'
+            'Could not complete sign-in automatically. ' +
+            'In Chrome with DevTools open (F12): log in and click Continue — ' +
+            'then check the Console tab for a "Failed to launch com.bosch.tt…" error ' +
+            'and copy that full URL, or use the Network tab to find the ' +
+            '/authorize/callback request and copy its Location response header.'
           );
         }
       }

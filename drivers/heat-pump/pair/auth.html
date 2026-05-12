@@ -39,17 +39,20 @@
         <code>com.bosch.tt…</code> URL — and paste it below. The app will handle it.
       </p>
       <p class="step-hint step-hint--tip" style="margin-top:-4px">
-        <strong>Tip:</strong> use <strong>Chrome</strong> with DevTools (F12) →
-        <em>Network</em> → <em>Preserve log</em>. After clicking Continue, find
-        <code>/authorize/callback</code> → Response Headers → copy
-        <code>Location</code>. That URL starts with <code>com.bosch.tt…</code>.
+        <strong>Tip — Chrome method:</strong> open Chrome DevTools (F12) before
+        logging in. After clicking <em>Continue</em>, check the
+        <strong>Console</strong> tab for a <em>"Failed to launch
+        com.bosch.tt.dashtt.pointt://…"</em> error — copy that full URL and
+        paste it above. Alternatively use the <em>Network</em> tab →
+        <em>Preserve log</em> → find <code>/authorize/callback</code> →
+        Response Headers → copy <code>Location</code>.
       </p>
 
       <!-- shown when a redirection/callback URL is pasted — driver will try server-side -->
       <div id="hintRedirection" style="display:none">
         <p class="step-hint step-hint--success">
-          ✓ Login URL detected — click <strong>Connect</strong> and the app will
-          try to complete the sign-in automatically.
+          ✓ Login URL detected — click <strong>Connect</strong>. If it fails,
+          see the tip below to get the final code URL from Chrome.
         </p>
       </div>
 
