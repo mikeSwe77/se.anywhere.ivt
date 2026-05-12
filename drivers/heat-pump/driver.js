@@ -8,17 +8,34 @@ class HeatPumpDriver extends Homey.Driver {
   onPair(session) {
     this.log('Pairing started');
 
-    session.setHandler('authenticate', async ({ email, password, serial, interval }) => {
-      this.log(`authenticate: email=${email}, serial=${serial || '(auto)'}, interval=${interval}`);
+    // Step 1: Build the SingleKey ID OAuth2 PKCE authorization URL
+    session.setHandler('get_auth_url', async () => {
+      const url = PointtClient.buildAuthUrl();
+      this.log('Auth URL built:', url.slice(0, 80));
+      return url;
+    });
 
-      // Full headless OAuth flow — no browser popup needed
+    // Step 2: Exchange the authorization code for tokens + validate device
+    session.setHandler('exchange_code', async ({ callbackUrl, serial, interval }) => {
+      this.log(`exchange_code: callbackUrl=${callbackUrl ? callbackUrl.slice(0, 60) : '(empty)'}, serial=${serial || '(auto)'}, interval=${interval}`);
+
+      // Extract authorization code from the callback URL
+      let code;
+      try {
+        code = PointtClient.extractCode(callbackUrl);
+        this.log('Authorization code extracted');
+      } catch (err) {
+        throw new Error('Invalid callback URL — could not find authorization code. Please try again.');
+      }
+
+      // Exchange code for tokens
       let tokens;
       try {
-        tokens = await PointtClient.authenticate(email, password);
-        this.log('Authentication successful, token expires:', new Date(tokens.token_expires_at).toISOString());
+        tokens = await PointtClient.exchangeCode(code);
+        this.log('Tokens obtained, expires:', new Date(tokens.token_expires_at).toISOString());
       } catch (err) {
-        this.log('Authentication failed:', err.message);
-        throw new Error(err.message);
+        this.log('Token exchange failed:', err.message);
+        throw new Error(`Token exchange failed: ${err.message}`);
       }
 
       // Discover device ID — use provided serial or auto-discover from API
@@ -34,14 +51,13 @@ class HeatPumpDriver extends Homey.Driver {
             deviceId = gateways[0].id;
             this.log('Auto-selected device:', deviceId);
           } else {
-            // Multiple — list them for the user
             const names = gateways.map(g => `${g.id} (${g.name})`).join(', ');
             throw new Error(`Multiple heat pumps found: ${names}. Please enter the serial number manually.`);
           }
         } catch (err) {
           if (err.message.includes('Multiple') || err.message.includes('No heat pumps')) throw err;
           this.log('Gateway list failed:', err.message);
-          throw new Error(`Could not discover device. Please enter the serial number manually.`);
+          throw new Error('Could not discover device. Please enter the serial number manually.');
         }
       }
 
@@ -88,12 +104,23 @@ class HeatPumpDriver extends Homey.Driver {
   onRepair(session, device) {
     this.log('Repair started for device:', device.getData().id);
 
-    session.setHandler('authenticate', async ({ email, password }) => {
+    session.setHandler('get_auth_url', async () => {
+      return PointtClient.buildAuthUrl();
+    });
+
+    session.setHandler('exchange_code', async ({ callbackUrl }) => {
+      let code;
+      try {
+        code = PointtClient.extractCode(callbackUrl);
+      } catch (err) {
+        throw new Error('Invalid callback URL — could not find authorization code.');
+      }
+
       let tokens;
       try {
-        tokens = await PointtClient.authenticate(email, password);
+        tokens = await PointtClient.exchangeCode(code);
       } catch (err) {
-        throw new Error(err.message);
+        throw new Error(`Token exchange failed: ${err.message}`);
       }
 
       await device.setStoreValue('access_token', tokens.access_token);

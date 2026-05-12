@@ -11,78 +11,173 @@
       <p class="homey-subtitle">Sign in with your Bosch / SingleKey ID account.</p>
     </header>
 
-    <fieldset class="homey-form-fieldset" style="margin-top: 0">
+    <!-- Step 1: Serial + Interval, then open the Bosch login popup -->
+    <div id="step1">
+      <fieldset class="homey-form-fieldset" style="margin-top: 0">
 
-      <div class="homey-form-group">
-        <label class="homey-form-label" for="email">Bosch / SingleKey ID email</label>
-        <input class="homey-form-input" id="email" type="email" placeholder="you@example.com" autocomplete="email" />
-      </div>
+        <div class="homey-form-group">
+          <label class="homey-form-label" for="serial">Serial number <span style="font-weight:normal;color:#999">(optional — auto-detected if blank)</span></label>
+          <input class="homey-form-input" id="serial" type="text" placeholder="e.g. 176431053" autocomplete="off" />
+        </div>
 
-      <div class="homey-form-group">
-        <label class="homey-form-label" for="password">Password</label>
-        <input class="homey-form-input" id="password" type="password" placeholder="••••••••" autocomplete="current-password" />
-      </div>
+        <div class="homey-form-group">
+          <label class="homey-form-label" for="interval">Polling interval (seconds)</label>
+          <input class="homey-form-input" id="interval" type="number" value="60" min="10" max="3600" />
+        </div>
 
-      <div class="homey-form-group">
-        <label class="homey-form-label" for="serial">Serial number <span style="font-weight:normal;color:#999">(optional — auto-detected if blank)</span></label>
-        <input class="homey-form-input" id="serial" type="text" placeholder="e.g. 176431053" autocomplete="off" />
-      </div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px">
+          <span id="status1" style="flex-grow:1; font-size:13px; color:#666"></span>
+          <button id="btnOpen" class="homey-button-primary" style="margin-left:10px">Open Bosch Login</button>
+        </div>
 
-      <div class="homey-form-group">
-        <label class="homey-form-label" for="interval">Polling interval (seconds)</label>
-        <input class="homey-form-input" id="interval" type="number" value="60" min="10" max="3600" />
-      </div>
+      </fieldset>
+    </div>
 
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px">
-        <span id="status" style="flex-grow:1; font-size:13px; color:#666"></span>
-        <button id="btnConnect" class="homey-button-primary" style="margin-left:10px">Connect</button>
-      </div>
+    <!-- Step 2: Paste the callback URL (shown after popup is opened) -->
+    <div id="step2" style="display:none">
+      <fieldset class="homey-form-fieldset" style="margin-top:0">
 
-    </fieldset>
+        <div class="homey-form-group">
+          <p style="font-size:13px; margin:0 0 10px">
+            Log in to Bosch in the popup window. After login, your browser will show an
+            error page or a dialog — the address bar contains the callback URL (starts
+            with <code>com.bosch.tt…</code>). Copy that URL and paste it below.
+          </p>
+          <label class="homey-form-label" for="callbackUrl">Callback URL from address bar</label>
+          <input class="homey-form-input" id="callbackUrl" type="text"
+                 placeholder="com.bosch.tt.dashtt.pointt://app/login?code=…"
+                 autocomplete="off" />
+        </div>
+
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px">
+          <span id="status2" style="flex-grow:1; font-size:13px; color:#666"></span>
+          <button id="btnBack" class="homey-button-secondary" style="margin-right:8px">Back</button>
+          <button id="btnConnect" class="homey-button-primary">Connect</button>
+        </div>
+
+      </fieldset>
+    </div>
+
   </div>
 
   <script>
-    var statusEl = document.getElementById('status');
+    var pollTimer = null;
+    var popup    = null;
 
-    function setStatus(msg, isError) {
-      statusEl.textContent = msg;
-      statusEl.style.color = isError ? 'red' : '#666';
+    function setStatus(el, msg, isError) {
+      el.textContent = msg;
+      el.style.color = isError ? 'red' : '#666';
     }
 
+    // ── Step 1: Open the Bosch login popup ──────────────────────────────────
+
+    document.getElementById('btnOpen').addEventListener('click', function() {
+      var btn = this;
+      btn.classList.add('is-loading');
+      btn.disabled = true;
+      setStatus(document.getElementById('status1'), 'Opening login page…', false);
+
+      Homey.emit('get_auth_url', {}, function(err, authUrl) {
+        btn.classList.remove('is-loading');
+        btn.disabled = false;
+
+        if (err || !authUrl) {
+          setStatus(document.getElementById('status1'), 'Error: ' + (err ? err.message : 'No URL'), true);
+          return;
+        }
+
+        // Open the SingleKey ID login in a popup
+        popup = window.open(authUrl, 'singlekeyLogin', 'width=480,height=640,noopener=0');
+
+        if (!popup) {
+          setStatus(document.getElementById('status1'), 'Popup blocked — allow popups for this page and try again.', true);
+          return;
+        }
+
+        // Show step 2 (paste area)
+        document.getElementById('step1').style.display = 'none';
+        document.getElementById('step2').style.display = '';
+
+        // ── Auto-detect: poll popup.location.href ──────────────────────────
+        // Custom URI schemes (com.bosch.tt…) are not web origins, so accessing
+        // popup.location.href doesn't throw a SecurityError once the browser
+        // navigates there. Works on Chrome & Firefox.
+        pollTimer = setInterval(function() {
+          if (!popup || popup.closed) {
+            clearInterval(pollTimer);
+            return;
+          }
+          try {
+            var loc = popup.location.href;
+            if (loc && (loc.indexOf('com.bosch.tt.dashtt.pointt://') === 0 || loc.indexOf('code=') !== -1)) {
+              clearInterval(pollTimer);
+              popup.close();
+              // auto-connect
+              document.getElementById('callbackUrl').value = loc;
+              doConnect(loc);
+            }
+          } catch (e) {
+            // SecurityError: still on singlekey-id.com (cross-origin) — keep waiting
+          }
+        }, 400);
+      });
+    });
+
+    // ── Step 2: Back button ──────────────────────────────────────────────────
+
+    document.getElementById('btnBack').addEventListener('click', function() {
+      clearInterval(pollTimer);
+      if (popup && !popup.closed) popup.close();
+      document.getElementById('step2').style.display = 'none';
+      document.getElementById('step1').style.display  = '';
+      setStatus(document.getElementById('status1'), '', false);
+    });
+
+    // ── Step 2: Manual paste + Connect ──────────────────────────────────────
+
     document.getElementById('btnConnect').addEventListener('click', function() {
+      var callbackUrl = document.getElementById('callbackUrl').value.trim();
+      if (!callbackUrl) {
+        setStatus(document.getElementById('status2'), 'Please paste the callback URL.', true);
+        return;
+      }
+      doConnect(callbackUrl);
+    });
+
+    function doConnect(callbackUrl) {
+      clearInterval(pollTimer);
+      if (popup && !popup.closed) popup.close();
+
       var serial   = document.getElementById('serial').value.trim();
-      var email    = document.getElementById('email').value.trim();
-      var password = document.getElementById('password').value;
       var interval = parseInt(document.getElementById('interval').value, 10) || 60;
       var btn      = document.getElementById('btnConnect');
+      var statusEl = document.getElementById('status2');
 
-      if (!email)    { setStatus('Please enter your email.', true); return; }
-      if (!password) { setStatus('Please enter your password.', true); return; }
-
-      setStatus('Signing in…', false);
+      setStatus(statusEl, 'Exchanging code for tokens…', false);
       btn.classList.add('is-loading');
       btn.disabled = true;
 
-      Homey.emit('authenticate', { serial: serial, email: email, password: password, interval: interval }, function(err, device) {
+      Homey.emit('exchange_code', { callbackUrl: callbackUrl, serial: serial, interval: interval }, function(err, device) {
         btn.classList.remove('is-loading');
         btn.disabled = false;
 
         if (err || !device) {
-          setStatus('Error: ' + (err ? err.message : 'Unknown error'), true);
+          setStatus(statusEl, 'Error: ' + (err ? err.message : 'Unknown error'), true);
           return;
         }
 
-        setStatus('Adding device…', false);
+        setStatus(statusEl, 'Adding device…', false);
         Homey.createDevice(device, function(err2) {
-          if (err2) { setStatus('Error adding device: ' + err2.message, true); return; }
+          if (err2) { setStatus(statusEl, 'Error adding device: ' + err2.message, true); return; }
           Homey.done();
         });
       });
-    });
+    }
   </script>
 
   <style>
     body { padding: 0 16px 16px; }
+    code { font-size: 11px; background: #f4f4f4; padding: 1px 4px; border-radius: 3px; }
   </style>
 </body>
 </html>
