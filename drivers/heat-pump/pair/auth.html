@@ -14,11 +14,6 @@
     <fieldset class="homey-form-fieldset" style="margin-top: 0">
 
       <div class="homey-form-group">
-        <label class="homey-form-label" for="serial">Heat pump serial number</label>
-        <input class="homey-form-input" id="serial" type="text" placeholder="e.g. 176431053" autocomplete="off" />
-      </div>
-
-      <div class="homey-form-group">
         <label class="homey-form-label" for="email">Bosch / SingleKey ID email</label>
         <input class="homey-form-input" id="email" type="email" placeholder="you@example.com" autocomplete="email" />
       </div>
@@ -26,6 +21,11 @@
       <div class="homey-form-group">
         <label class="homey-form-label" for="password">Password</label>
         <input class="homey-form-input" id="password" type="password" placeholder="••••••••" autocomplete="current-password" />
+      </div>
+
+      <div class="homey-form-group">
+        <label class="homey-form-label" for="serial">Serial number <span style="font-weight:normal;color:#999">(optional — auto-detected if blank)</span></label>
+        <input class="homey-form-input" id="serial" type="text" placeholder="e.g. 176431053" autocomplete="off" />
       </div>
 
       <div class="homey-form-group">
@@ -56,7 +56,6 @@
       var interval = parseInt(document.getElementById('interval').value, 10) || 60;
       var btn      = document.getElementById('btnConnect');
 
-      if (!serial)   { setStatus('Please enter the serial number.', true); return; }
       if (!email)    { setStatus('Please enter your email.', true); return; }
       if (!password) { setStatus('Please enter your password.', true); return; }
 
