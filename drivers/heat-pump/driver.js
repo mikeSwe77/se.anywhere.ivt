@@ -19,13 +19,27 @@ class HeatPumpDriver extends Homey.Driver {
     session.setHandler('exchange_code', async ({ callbackUrl, serial, interval }) => {
       this.log(`exchange_code: callbackUrl=${callbackUrl ? callbackUrl.slice(0, 60) : '(empty)'}, serial=${serial || '(auto)'}, interval=${interval}`);
 
-      // Extract authorization code from the callback URL
+      // Extract authorization code — try direct extraction first, then server-side completion
       let code;
       try {
         code = PointtClient.extractCode(callbackUrl);
-        this.log('Authorization code extracted');
-      } catch (err) {
-        throw new Error('Invalid callback URL — could not find authorization code. Please try again.');
+        this.log('Authorization code extracted directly');
+      } catch (_) {
+        // No code in the pasted URL — try completing the OAuth callback server-side
+        // (works when the server stores interaction state by f= token, not by session cookie)
+        this.log('No code in URL — attempting server-side callback completion...');
+        try {
+          code = await PointtClient.tryCompleteRedirection(callbackUrl);
+          this.log('Server-side callback completion succeeded');
+        } catch (err) {
+          this.log('Server-side completion failed:', err.message);
+          throw new Error(
+            'Could not extract authorization code.\n' +
+            'In Chrome: open DevTools → Network tab → log in → click Continue → ' +
+            'find the request to /authorize/callback → copy the Location response header ' +
+            '(starts with com.bosch.tt.dashtt.pointt://) and paste that URL instead.'
+          );
+        }
       }
 
       // Exchange code for tokens

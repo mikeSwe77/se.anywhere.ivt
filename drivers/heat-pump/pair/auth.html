@@ -34,9 +34,16 @@
       <div class="step-label" style="margin-top:16px">Step 2 — Paste the URL from Safari</div>
 
       <p class="step-hint" id="hintDefault">
-        After logging in, Safari will show a <em>"cannot open"</em> error.
-        Copy the full URL from Safari's address bar
-        (starts with <code>com.bosch.tt.dashtt.pointt://</code>) and paste it below.
+        After logging in and clicking <strong>Continue</strong>, copy the full URL
+        that starts with <code>com.bosch.tt.dashtt.pointt://app/login?code=…</code>
+        and paste it below.
+      </p>
+      <p class="step-hint" style="margin-top:-4px">
+        <strong>Easiest way:</strong> do step 1 in <strong>Chrome</strong> with
+        DevTools open (F12) → <em>Network</em> tab → tick <em>Preserve log</em>.
+        After clicking Continue, find the last request to
+        <code>/authorize/callback</code>, open its <em>Response Headers</em>,
+        and copy the <code>Location</code> value.
       </p>
 
       <!-- shown when a redirection-page URL is pasted instead of the deep link -->
