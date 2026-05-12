@@ -164,7 +164,11 @@ class HeatPumpDevice extends Device {
           }
         }
         this.updateValue(value.name, result);
-      } catch (err) { this.log(`Failed to fetch ${value.name}:`, err.message); }
+      } catch (err) {
+        // 403 on optional capabilities = endpoint not exposed by cloud API — skip silently
+        if (err.statusCode === 403 && value.optional) continue;
+        this.log(`Failed to fetch ${value.name}:`, err.message);
+      }
     }
 
     if (!this.isWriting) {
@@ -180,8 +184,10 @@ class HeatPumpDevice extends Device {
 
     if (!this.isWriting) {
       try {
-        const res = await this.client.get('/heatingCircuits/hc1/temperatureRoomSetpoint');
-        if (res && res.value) {
+        // currentRoomSetpoint = active setpoint (cloud-accessible, read-only).
+        // temperatureRoomSetpoint returns 403 via the Pointt cloud API.
+        const res = await this.client.get('/heatingCircuits/hc1/currentRoomSetpoint');
+        if (res && res.value != null) {
           this.updateValue('target_temperature', parseFloat(res.value));
         }
       } catch (err) { this.log('Failed to fetch target_temperature:', err.message); }
