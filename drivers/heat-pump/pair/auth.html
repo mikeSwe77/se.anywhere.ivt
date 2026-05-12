@@ -16,11 +16,6 @@
       <!-- ── Step 1: Open login link ─────────────────────────────────────── -->
       <div class="step-label">Step 1 — Log in with Bosch</div>
 
-      <p class="step-hint">
-        Open the link below in your browser and sign in with your
-        <strong>Bosch&nbsp;/&nbsp;SingleKey&nbsp;ID</strong> account.
-      </p>
-
       <div id="urlBox" style="display:none; margin-bottom:12px">
         <div class="url-row">
           <input class="homey-form-input url-display" id="authUrlDisplay" type="text" readonly />
@@ -30,27 +25,32 @@
       </div>
       <div id="urlLoading" style="font-size:13px;color:#999;margin-bottom:12px">Loading login URL…</div>
 
-      <!-- ── Step 2: Paste URL ───────────────────────────────────────────── -->
-      <div class="step-label" style="margin-top:16px">Step 2 — Paste the URL from your browser</div>
+      <!-- ── Step 2: Paste URL and get code ─────────────────────────────── -->
+      <div class="step-label" style="margin-top:16px">Step 2 — Get the authorization code</div>
 
-      <p class="step-hint">
-        After login, copy the full URL shown in your browser's address bar and paste it below.
-        It can be <em>either</em> the final callback URL
-        (<code>com.bosch.tt.dashtt.pointt://…</code>)
-        <em>or</em> the redirect page URL
-        (<code>singlekey-id.com/sv-se/redirection…</code>) — both are handled automatically.
+      <p class="step-hint" id="hintDefault">
+        After logging in, copy the URL shown in your browser's address bar and paste it below.
+        It can be the redirect page URL (<code>singlekey-id.com/sv-se/redirection…</code>)
+        or the final callback URL (<code>com.bosch.tt.dashtt.pointt://…</code>).
       </p>
+
+      <!-- shown when a redirection-page URL is pasted -->
+      <div id="hintRedirection" style="display:none">
+        <p class="step-hint step-hint--success">
+          ✓ Login successful! Now click <strong>Get Code ↗</strong> to open a new browser tab.
+          When the tab shows a <em>"cannot open"</em> error, the address bar will contain
+          your code URL starting with <code>com.bosch.tt…</code> — copy it and paste it
+          in the field below.
+        </p>
+        <div class="url-row" style="margin-bottom:12px">
+          <a id="btnGetCode" class="action-btn action-btn--primary" target="_blank" rel="noopener noreferrer" style="flex:1; justify-content:center">Get Code ↗</a>
+        </div>
+      </div>
 
       <div class="homey-form-group">
         <label class="homey-form-label" for="callbackUrl">URL from browser address bar</label>
         <input class="homey-form-input" id="callbackUrl" type="text"
                placeholder="Paste URL here…" autocomplete="off" />
-      </div>
-
-      <!-- shown when user pastes a redirection-page URL -->
-      <div id="redirectionNotice" style="display:none; margin:8px 0; padding:10px 12px; background:#fff8e1; border-radius:6px; font-size:13px">
-        <strong>Login successful!</strong> Click <em>Complete Login</em> to finish connecting.
-        <br><span style="color:#999;font-size:12px">This opens a small window to retrieve your authorization code.</span>
       </div>
 
       <!-- ── Options ────────────────────────────────────────────────────── -->
@@ -75,7 +75,6 @@
   <script>
     var authUrl = '';
     var pollTimer = null;
-    var pendingCallbackUrl = ''; // callback URL extracted from redirection page
 
     function setStatus(msg, isError) {
       var el = document.getElementById('status');
@@ -115,23 +114,7 @@
     });
 
     // ── Detect URL type when user pastes ──────────────────────────────────
-    document.getElementById('callbackUrl').addEventListener('input', function() {
-      var val = this.value.trim();
-      this.value = val;
-      checkPastedUrl(val);
-    });
-    document.getElementById('callbackUrl').addEventListener('paste', function() {
-      // let the paste complete, then check
-      var self = this;
-      setTimeout(function() {
-        var val = self.value.trim();
-        self.value = val;
-        checkPastedUrl(val);
-      }, 50);
-    });
-
     function parseRedirectionUrl(url) {
-      // Returns the callback URL to open if this is a sv-se/redirection page URL, else null
       try {
         var u = new URL(url);
         if (!u.hostname.includes('singlekey-id.com')) return null;
@@ -139,111 +122,75 @@
         var returnUrl = u.searchParams.get('returnUrl');
         var f = u.searchParams.get('f');
         if (!returnUrl) return null;
-        // Build the actual callback URL the server expects
-        var callbackPath = returnUrl + (f ? ('&f=' + encodeURIComponent(f)) : '');
-        return 'https://singlekey-id.com' + callbackPath;
+        return 'https://singlekey-id.com' + returnUrl + (f ? '&f=' + encodeURIComponent(f) : '');
       } catch (e) { return null; }
     }
 
-    function checkPastedUrl(val) {
-      if (!val) {
-        document.getElementById('redirectionNotice').style.display = 'none';
-        document.getElementById('btnConnect').textContent = 'Connect';
-        pendingCallbackUrl = '';
-        return;
-      }
+    function onUrlInput() {
+      var val = document.getElementById('callbackUrl').value.trim();
+      document.getElementById('callbackUrl').value = val;
 
-      var redirectCallback = parseRedirectionUrl(val);
-      if (redirectCallback) {
-        // It's a redirection-page URL — show the "Complete Login" notice
-        pendingCallbackUrl = redirectCallback;
-        document.getElementById('redirectionNotice').style.display = '';
-        document.getElementById('btnConnect').textContent = 'Complete Login';
-        setStatus('', false);
-      } else {
-        pendingCallbackUrl = '';
-        document.getElementById('redirectionNotice').style.display = 'none';
-        document.getElementById('btnConnect').textContent = 'Connect';
+      var callbackUrl = parseRedirectionUrl(val);
+      var isRedirection = !!callbackUrl;
+
+      // Toggle hint sections
+      document.getElementById('hintDefault').style.display     = isRedirection ? 'none' : '';
+      document.getElementById('hintRedirection').style.display = isRedirection ? '' : 'none';
+
+      if (isRedirection) {
+        // Set the "Get Code" link to the extracted callback URL
+        document.getElementById('btnGetCode').href = callbackUrl;
+
+        // Also try polling a popup automatically (works on Chrome/Firefox)
+        startPopupPoll(callbackUrl);
       }
     }
 
-    // ── Connect / Complete Login button ───────────────────────────────────
-    document.getElementById('btnConnect').addEventListener('click', function() {
-      var callbackInput = document.getElementById('callbackUrl').value.trim();
-
-      if (!callbackInput) {
-        setStatus('Please paste the URL from your browser.', true);
-        return;
-      }
-
-      if (pendingCallbackUrl) {
-        // Redirection-page URL: open popup with callback URL and poll for the deep link
-        completeThroughPopup(pendingCallbackUrl);
-      } else {
-        // Direct deep-link URL (or other): try to extract code directly
-        doConnect(callbackInput);
-      }
+    document.getElementById('callbackUrl').addEventListener('input', onUrlInput);
+    document.getElementById('callbackUrl').addEventListener('paste', function() {
+      setTimeout(onUrlInput, 50);
     });
 
-    // ── Popup strategy: open callback URL (carries session cookies) ───────
-    // The popup navigates to com.bosch.tt.dashtt.pointt://...
-    // Custom URI schemes are not web origins → popup.location.href is readable
-    function completeThroughPopup(callbackUrl) {
-      setStatus('Opening callback window…', false);
-      var btn = document.getElementById('btnConnect');
-      btn.classList.add('is-loading');
-      btn.disabled = true;
-
-      var popup = window.open(callbackUrl, 'ivtCallback', 'width=200,height=200,menubar=no,toolbar=no');
-
-      if (!popup) {
-        btn.classList.remove('is-loading');
-        btn.disabled = false;
-        setStatus('Popup blocked — please allow popups for this page and try again.', true);
-        return;
-      }
+    // ── Popup polling (silent, Chrome/Firefox) ────────────────────────────
+    function startPopupPoll(callbackUrl) {
+      clearInterval(pollTimer);
+      var popup = window.open(callbackUrl, 'ivtCodeFetch');
+      if (!popup) return; // blocked — user will use the manual link
 
       var attempts = 0;
-      var maxAttempts = 60; // 30 seconds
-
-      clearInterval(pollTimer);
       pollTimer = setInterval(function() {
         attempts++;
-
-        if (!popup || popup.closed) {
-          clearInterval(pollTimer);
-          btn.classList.remove('is-loading');
-          btn.disabled = false;
-          setStatus('Popup closed before authorization code was captured. Please try again.', true);
-          return;
-        }
-
+        if (!popup || popup.closed) { clearInterval(pollTimer); return; }
         try {
           var loc = popup.location.href;
-          // Got a readable location — check if it's the deep link
           if (loc && loc.indexOf('code=') !== -1) {
             clearInterval(pollTimer);
             try { popup.close(); } catch(e) {}
+            // Auto-fill and connect
+            document.getElementById('callbackUrl').value = loc;
             doConnect(loc);
-            return;
           }
-          // If it's about:blank or similar, keep waiting
-        } catch (e) {
-          // SecurityError: still on singlekey-id.com (web origin) → keep polling
-        }
-
-        if (attempts >= maxAttempts) {
-          clearInterval(pollTimer);
-          try { popup.close(); } catch(e) {}
-          btn.classList.remove('is-loading');
-          btn.disabled = false;
-          setStatus('Timed out waiting for authorization. Please try the full flow again.', true);
-        }
+        } catch (e) { /* cross-origin — keep waiting */ }
+        if (attempts > 60) { clearInterval(pollTimer); try { popup.close(); } catch(e) {} }
       }, 500);
     }
 
-    // ── Final connect: exchange code for tokens ────────────────────────────
+    // ── Connect button ─────────────────────────────────────────────────────
+    document.getElementById('btnConnect').addEventListener('click', function() {
+      var val = document.getElementById('callbackUrl').value.trim();
+      if (!val) { setStatus('Please paste the URL from your browser.', true); return; }
+
+      // If it's still a redirection URL (user didn't get the deep link yet), guide them
+      if (parseRedirectionUrl(val)) {
+        setStatus('Please use the "Get Code ↗" link above to get the final callback URL first.', true);
+        return;
+      }
+
+      doConnect(val);
+    });
+
     function doConnect(callbackUrl) {
+      clearInterval(pollTimer);
       var serial   = document.getElementById('serial').value.trim();
       var interval = parseInt(document.getElementById('interval').value, 10) || 60;
       var btn      = document.getElementById('btnConnect');
@@ -255,12 +202,7 @@
       Homey.emit('exchange_code', { callbackUrl: callbackUrl, serial: serial, interval: interval }, function(err, device) {
         btn.classList.remove('is-loading');
         btn.disabled = false;
-
-        if (err || !device) {
-          setStatus('Error: ' + (err ? err.message : 'Unknown error'), true);
-          return;
-        }
-
+        if (err || !device) { setStatus('Error: ' + (err ? err.message : 'Unknown error'), true); return; }
         setStatus('Adding device…', false);
         Homey.createDevice(device, function(err2) {
           if (err2) { setStatus('Error adding device: ' + err2.message, true); return; }
@@ -277,6 +219,10 @@
       letter-spacing: 0.06em; color: #999; margin-bottom: 6px;
     }
     .step-hint { font-size: 13px; color: #555; margin: 0 0 10px; line-height: 1.5; }
+    .step-hint--success {
+      background: #f0faf0; border-left: 3px solid #4caf50;
+      padding: 8px 10px; border-radius: 0 4px 4px 0; color: #2e7d32;
+    }
     .url-row { display: flex; gap: 6px; align-items: center; }
     .url-display {
       flex: 1; font-size: 11px !important; color: #444 !important;
