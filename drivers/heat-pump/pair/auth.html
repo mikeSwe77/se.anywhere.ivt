@@ -8,45 +8,54 @@
 
     <header class="homey-header" style="margin-bottom: 0">
       <h1 class="homey-title">IVT Anywhere</h1>
-      <p class="homey-subtitle">Connect your heat pump to Homey via Bosch / SingleKey ID.</p>
+      <p class="homey-subtitle">Connect your heat pump via Bosch / SingleKey ID.</p>
     </header>
 
     <fieldset class="homey-form-fieldset" style="margin-top: 0">
 
-      <!-- ── Step 1: Auth URL ───────────────────────────────────────────── -->
+      <!-- ── Step 1: Open login link ─────────────────────────────────────── -->
       <div class="step-label">Step 1 — Log in with Bosch</div>
 
       <p class="step-hint">
         Open the link below in your browser and sign in with your
         <strong>Bosch&nbsp;/&nbsp;SingleKey&nbsp;ID</strong> account.
-        After login you will briefly see a <em>redirect page</em> — wait
-        2–3 seconds for it to continue automatically.
-        Your browser will then show an error page with a URL starting with
-        <code>com.bosch.tt.dashtt.pointt://</code> in the address bar.
-        Copy that URL and paste it in Step&nbsp;2.
       </p>
 
-      <div id="urlBox" style="display:none">
+      <div id="urlBox" style="display:none; margin-bottom:12px">
         <div class="url-row">
           <input class="homey-form-input url-display" id="authUrlDisplay" type="text" readonly />
           <button id="btnCopy" class="action-btn" title="Copy URL">Copy</button>
-          <a  id="btnOpen" class="action-btn action-btn--primary" target="_blank" rel="noopener noreferrer">Open</a>
+          <a id="btnOpen" class="action-btn action-btn--primary" target="_blank" rel="noopener noreferrer">Open ↗</a>
         </div>
       </div>
-      <div id="urlLoading" style="font-size:13px; color:#999; margin-bottom:12px">Loading login URL…</div>
+      <div id="urlLoading" style="font-size:13px;color:#999;margin-bottom:12px">Loading login URL…</div>
 
-      <!-- ── Step 2: Paste callback + device options ────────────────────── -->
-      <div class="step-label" style="margin-top:16px">Step 2 — Paste the callback URL</div>
+      <!-- ── Step 2: Paste URL ───────────────────────────────────────────── -->
+      <div class="step-label" style="margin-top:16px">Step 2 — Paste the URL from your browser</div>
+
+      <p class="step-hint">
+        After login, copy the full URL shown in your browser's address bar and paste it below.
+        It can be <em>either</em> the final callback URL
+        (<code>com.bosch.tt.dashtt.pointt://…</code>)
+        <em>or</em> the redirect page URL
+        (<code>singlekey-id.com/sv-se/redirection…</code>) — both are handled automatically.
+      </p>
 
       <div class="homey-form-group">
-        <label class="homey-form-label" for="callbackUrl">Callback URL (from browser address bar)</label>
+        <label class="homey-form-label" for="callbackUrl">URL from browser address bar</label>
         <input class="homey-form-input" id="callbackUrl" type="text"
-               placeholder="com.bosch.tt.dashtt.pointt://app/login?code=…"
-               autocomplete="off" />
+               placeholder="Paste URL here…" autocomplete="off" />
       </div>
 
-      <div class="homey-form-group">
-        <label class="homey-form-label" for="serial">Serial number <span class="muted">(optional — auto-detected if blank)</span></label>
+      <!-- shown when user pastes a redirection-page URL -->
+      <div id="redirectionNotice" style="display:none; margin:8px 0; padding:10px 12px; background:#fff8e1; border-radius:6px; font-size:13px">
+        <strong>Login successful!</strong> Click <em>Complete Login</em> to finish connecting.
+        <br><span style="color:#999;font-size:12px">This opens a small window to retrieve your authorization code.</span>
+      </div>
+
+      <!-- ── Options ────────────────────────────────────────────────────── -->
+      <div class="homey-form-group" style="margin-top:4px">
+        <label class="homey-form-label" for="serial">Serial number <span class="muted">(optional — auto-detected)</span></label>
         <input class="homey-form-input" id="serial" type="text" placeholder="e.g. 176431053" autocomplete="off" />
       </div>
 
@@ -65,6 +74,8 @@
 
   <script>
     var authUrl = '';
+    var pollTimer = null;
+    var pendingCallbackUrl = ''; // callback URL extracted from redirection page
 
     function setStatus(msg, isError) {
       var el = document.getElementById('status');
@@ -72,7 +83,7 @@
       el.style.color = isError ? 'red' : '#666';
     }
 
-    // ── Load the auth URL immediately on page load ─────────────────────────
+    // ── Load auth URL on page open ─────────────────────────────────────────
     Homey.emit('get_auth_url', {}, function(err, url) {
       document.getElementById('urlLoading').style.display = 'none';
       if (err || !url) {
@@ -86,41 +97,156 @@
       document.getElementById('btnConnect').disabled = false;
     });
 
-    // ── Copy URL to clipboard ──────────────────────────────────────────────
+    // ── Copy URL button ────────────────────────────────────────────────────
     document.getElementById('btnCopy').addEventListener('click', function() {
       if (!authUrl) return;
+      var btn = this;
       if (navigator.clipboard) {
         navigator.clipboard.writeText(authUrl).then(function() {
-          document.getElementById('btnCopy').textContent = 'Copied!';
-          setTimeout(function() { document.getElementById('btnCopy').textContent = 'Copy'; }, 2000);
+          btn.textContent = 'Copied!';
+          setTimeout(function() { btn.textContent = 'Copy'; }, 2000);
         });
       } else {
-        // Fallback: select the text in the input
-        var inp = document.getElementById('authUrlDisplay');
-        inp.select();
+        document.getElementById('authUrlDisplay').select();
         document.execCommand('copy');
-        document.getElementById('btnCopy').textContent = 'Copied!';
-        setTimeout(function() { document.getElementById('btnCopy').textContent = 'Copy'; }, 2000);
+        btn.textContent = 'Copied!';
+        setTimeout(function() { btn.textContent = 'Copy'; }, 2000);
       }
     });
 
-    // ── Also auto-detect if user opens the link in the same window ─────────
-    // Poll for the callback URL being pasted (quality-of-life auto-trim)
+    // ── Detect URL type when user pastes ──────────────────────────────────
     document.getElementById('callbackUrl').addEventListener('input', function() {
-      this.value = this.value.trim();
+      var val = this.value.trim();
+      this.value = val;
+      checkPastedUrl(val);
+    });
+    document.getElementById('callbackUrl').addEventListener('paste', function() {
+      // let the paste complete, then check
+      var self = this;
+      setTimeout(function() {
+        var val = self.value.trim();
+        self.value = val;
+        checkPastedUrl(val);
+      }, 50);
     });
 
-    // ── Connect ────────────────────────────────────────────────────────────
-    document.getElementById('btnConnect').addEventListener('click', function() {
-      var callbackUrl = document.getElementById('callbackUrl').value.trim();
-      var serial      = document.getElementById('serial').value.trim();
-      var interval    = parseInt(document.getElementById('interval').value, 10) || 60;
-      var btn         = this;
+    function parseRedirectionUrl(url) {
+      // Returns the callback URL to open if this is a sv-se/redirection page URL, else null
+      try {
+        var u = new URL(url);
+        if (!u.hostname.includes('singlekey-id.com')) return null;
+        if (!u.pathname.includes('redirection')) return null;
+        var returnUrl = u.searchParams.get('returnUrl');
+        var f = u.searchParams.get('f');
+        if (!returnUrl) return null;
+        // Build the actual callback URL the server expects
+        var callbackPath = returnUrl + (f ? ('&f=' + encodeURIComponent(f)) : '');
+        return 'https://singlekey-id.com' + callbackPath;
+      } catch (e) { return null; }
+    }
 
-      if (!callbackUrl) {
-        setStatus('Please paste the callback URL from your browser.', true);
+    function checkPastedUrl(val) {
+      if (!val) {
+        document.getElementById('redirectionNotice').style.display = 'none';
+        document.getElementById('btnConnect').textContent = 'Connect';
+        pendingCallbackUrl = '';
         return;
       }
+
+      var redirectCallback = parseRedirectionUrl(val);
+      if (redirectCallback) {
+        // It's a redirection-page URL — show the "Complete Login" notice
+        pendingCallbackUrl = redirectCallback;
+        document.getElementById('redirectionNotice').style.display = '';
+        document.getElementById('btnConnect').textContent = 'Complete Login';
+        setStatus('', false);
+      } else {
+        pendingCallbackUrl = '';
+        document.getElementById('redirectionNotice').style.display = 'none';
+        document.getElementById('btnConnect').textContent = 'Connect';
+      }
+    }
+
+    // ── Connect / Complete Login button ───────────────────────────────────
+    document.getElementById('btnConnect').addEventListener('click', function() {
+      var callbackInput = document.getElementById('callbackUrl').value.trim();
+
+      if (!callbackInput) {
+        setStatus('Please paste the URL from your browser.', true);
+        return;
+      }
+
+      if (pendingCallbackUrl) {
+        // Redirection-page URL: open popup with callback URL and poll for the deep link
+        completeThroughPopup(pendingCallbackUrl);
+      } else {
+        // Direct deep-link URL (or other): try to extract code directly
+        doConnect(callbackInput);
+      }
+    });
+
+    // ── Popup strategy: open callback URL (carries session cookies) ───────
+    // The popup navigates to com.bosch.tt.dashtt.pointt://...
+    // Custom URI schemes are not web origins → popup.location.href is readable
+    function completeThroughPopup(callbackUrl) {
+      setStatus('Opening callback window…', false);
+      var btn = document.getElementById('btnConnect');
+      btn.classList.add('is-loading');
+      btn.disabled = true;
+
+      var popup = window.open(callbackUrl, 'ivtCallback', 'width=200,height=200,menubar=no,toolbar=no');
+
+      if (!popup) {
+        btn.classList.remove('is-loading');
+        btn.disabled = false;
+        setStatus('Popup blocked — please allow popups for this page and try again.', true);
+        return;
+      }
+
+      var attempts = 0;
+      var maxAttempts = 60; // 30 seconds
+
+      clearInterval(pollTimer);
+      pollTimer = setInterval(function() {
+        attempts++;
+
+        if (!popup || popup.closed) {
+          clearInterval(pollTimer);
+          btn.classList.remove('is-loading');
+          btn.disabled = false;
+          setStatus('Popup closed before authorization code was captured. Please try again.', true);
+          return;
+        }
+
+        try {
+          var loc = popup.location.href;
+          // Got a readable location — check if it's the deep link
+          if (loc && loc.indexOf('code=') !== -1) {
+            clearInterval(pollTimer);
+            try { popup.close(); } catch(e) {}
+            doConnect(loc);
+            return;
+          }
+          // If it's about:blank or similar, keep waiting
+        } catch (e) {
+          // SecurityError: still on singlekey-id.com (web origin) → keep polling
+        }
+
+        if (attempts >= maxAttempts) {
+          clearInterval(pollTimer);
+          try { popup.close(); } catch(e) {}
+          btn.classList.remove('is-loading');
+          btn.disabled = false;
+          setStatus('Timed out waiting for authorization. Please try the full flow again.', true);
+        }
+      }, 500);
+    }
+
+    // ── Final connect: exchange code for tokens ────────────────────────────
+    function doConnect(callbackUrl) {
+      var serial   = document.getElementById('serial').value.trim();
+      var interval = parseInt(document.getElementById('interval').value, 10) || 60;
+      var btn      = document.getElementById('btnConnect');
 
       setStatus('Exchanging code for tokens…', false);
       btn.classList.add('is-loading');
@@ -141,71 +267,32 @@
           Homey.done();
         });
       });
-    });
+    }
   </script>
 
   <style>
     body { padding: 0 16px 16px; }
-
     .step-label {
-      font-size: 11px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      color: #999;
-      margin-bottom: 6px;
+      font-size: 11px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.06em; color: #999; margin-bottom: 6px;
     }
-
-    .step-hint {
-      font-size: 13px;
-      color: #555;
-      margin: 0 0 10px;
-      line-height: 1.5;
-    }
-
-    .url-row {
-      display: flex;
-      gap: 6px;
-      align-items: center;
-      margin-bottom: 12px;
-    }
-
+    .step-hint { font-size: 13px; color: #555; margin: 0 0 10px; line-height: 1.5; }
+    .url-row { display: flex; gap: 6px; align-items: center; }
     .url-display {
-      flex: 1;
-      font-size: 11px !important;
-      color: #444 !important;
-      font-family: monospace;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      min-width: 0;
+      flex: 1; font-size: 11px !important; color: #444 !important;
+      font-family: monospace; overflow: hidden; text-overflow: ellipsis; min-width: 0;
     }
-
     .action-btn {
-      flex-shrink: 0;
-      padding: 0 12px;
-      height: 36px;
-      border: 1px solid #ddd;
-      border-radius: 4px;
-      background: #fff;
-      font-size: 13px;
-      cursor: pointer;
-      white-space: nowrap;
-      display: inline-flex;
-      align-items: center;
-      text-decoration: none;
-      color: #333;
+      flex-shrink: 0; padding: 0 12px; height: 36px; border: 1px solid #ddd;
+      border-radius: 4px; background: #fff; font-size: 13px; cursor: pointer;
+      white-space: nowrap; display: inline-flex; align-items: center;
+      text-decoration: none; color: #333;
     }
-
     .action-btn--primary {
-      background: var(--homey-color-primary, #ef645e);
-      color: #fff;
-      border-color: transparent;
+      background: var(--homey-color-primary, #ef645e); color: #fff; border-color: transparent;
     }
-
-    .muted {
-      font-weight: normal;
-      color: #999;
-    }
+    .muted { font-weight: normal; color: #999; }
+    code { font-size: 11px; background: #f4f4f4; padding: 1px 4px; border-radius: 3px; }
   </style>
 </body>
 </html>

@@ -19,14 +19,6 @@ class HeatPumpDriver extends Homey.Driver {
     session.setHandler('exchange_code', async ({ callbackUrl, serial, interval }) => {
       this.log(`exchange_code: callbackUrl=${callbackUrl ? callbackUrl.slice(0, 60) : '(empty)'}, serial=${serial || '(auto)'}, interval=${interval}`);
 
-      // Detect if the user pasted the intermediate redirect page URL instead of the final deep link
-      if (callbackUrl.includes('singlekey-id.com') && callbackUrl.includes('redirection')) {
-        throw new Error(
-          'You pasted the redirect page URL — wait 2–3 more seconds on that page for it to ' +
-          'redirect automatically, then copy the new URL (starts with com.bosch.tt…) from the address bar.'
-        );
-      }
-
       // Extract authorization code from the callback URL
       let code;
       try {
