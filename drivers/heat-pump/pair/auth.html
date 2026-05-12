@@ -136,6 +136,8 @@
     });
 
     // ── Detect URL type when user pastes ──────────────────────────────────
+
+    // Case 1: sv-se/redirection or en-us/redirection page
     function parseRedirectionUrl(url) {
       try {
         var u = new URL(url);
@@ -148,18 +150,30 @@
       } catch (e) { return null; }
     }
 
+    // Case 2: /auth/connect/authorize/callback without a code yet
+    // (the URL the "Continue" button links to on the SingleKey ID page)
+    function isCallbackWithoutCode(url) {
+      try {
+        var u = new URL(url);
+        return u.hostname.includes('singlekey-id.com') &&
+               u.pathname.includes('/auth/connect/authorize/callback') &&
+               !u.searchParams.get('code');
+      } catch (e) { return false; }
+    }
+
     function onUrlInput() {
       var val = document.getElementById('callbackUrl').value.trim();
       document.getElementById('callbackUrl').value = val;
 
-      var callbackUrl = parseRedirectionUrl(val);
-      var isRedirection = !!callbackUrl;
+      // Check for redirection page URL first, then bare callback URL
+      var codeUrl = parseRedirectionUrl(val) || (isCallbackWithoutCode(val) ? val : null);
+      var needsStep = !!codeUrl;
 
-      document.getElementById('hintDefault').style.display     = isRedirection ? 'none' : '';
-      document.getElementById('hintRedirection').style.display = isRedirection ? '' : 'none';
+      document.getElementById('hintDefault').style.display     = needsStep ? 'none' : '';
+      document.getElementById('hintRedirection').style.display = needsStep ? '' : 'none';
 
-      if (isRedirection) {
-        document.getElementById('codeUrlDisplay').value = callbackUrl;
+      if (needsStep) {
+        document.getElementById('codeUrlDisplay').value = codeUrl;
       }
     }
 
@@ -173,7 +187,7 @@
       var val = document.getElementById('callbackUrl').value.trim();
       if (!val) { setStatus('Please paste the URL from Safari.', true); return; }
 
-      if (parseRedirectionUrl(val)) {
+      if (parseRedirectionUrl(val) || isCallbackWithoutCode(val)) {
         setStatus('Please open the code URL shown above in Safari first, then paste the result.', true);
         return;
       }
