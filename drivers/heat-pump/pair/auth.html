@@ -20,7 +20,7 @@
         <div class="url-row">
           <input class="homey-form-input url-display" id="authUrlDisplay" type="text" readonly />
           <button id="btnCopy" class="action-btn" title="Copy URL">Copy</button>
-          <a id="btnOpen" class="action-btn action-btn--primary" target="_blank" rel="noopener noreferrer">Open ↗</a>
+          <button id="btnOpen" class="action-btn action-btn--primary">Open ↗</button>
         </div>
       </div>
       <div id="urlLoading" style="font-size:13px;color:#999;margin-bottom:12px">Loading login URL…</div>
@@ -43,7 +43,7 @@
           in the field below.
         </p>
         <div class="url-row" style="margin-bottom:12px">
-          <a id="btnGetCode" class="action-btn action-btn--primary" target="_blank" rel="noopener noreferrer" style="flex:1; justify-content:center">Get Code ↗</a>
+          <button id="btnGetCode" class="action-btn action-btn--primary" style="flex:1; justify-content:center">Get Code ↗</button>
         </div>
       </div>
 
@@ -91,9 +91,21 @@
       }
       authUrl = url;
       document.getElementById('authUrlDisplay').value = url;
-      document.getElementById('btnOpen').href = url;
       document.getElementById('urlBox').style.display = '';
       document.getElementById('btnConnect').disabled = false;
+    });
+
+    // ── Open login URL in system browser ──────────────────────────────────
+    document.getElementById('btnOpen').addEventListener('click', function() {
+      if (!authUrl) return;
+      Homey.openURL(authUrl);
+    });
+
+    // ── Get Code button — opens callback URL in system browser ────────────
+    document.getElementById('btnGetCode').addEventListener('click', function() {
+      var url = this.dataset.url;
+      if (!url) return;
+      Homey.openURL(url);
     });
 
     // ── Copy URL button ────────────────────────────────────────────────────
@@ -138,8 +150,8 @@
       document.getElementById('hintRedirection').style.display = isRedirection ? '' : 'none';
 
       if (isRedirection) {
-        // Set the "Get Code" link to the extracted callback URL
-        document.getElementById('btnGetCode').href = callbackUrl;
+        // Store the callback URL on the button for the click handler
+        document.getElementById('btnGetCode').dataset.url = callbackUrl;
 
         // Also try polling a popup automatically (works on Chrome/Firefox)
         startPopupPoll(callbackUrl);
