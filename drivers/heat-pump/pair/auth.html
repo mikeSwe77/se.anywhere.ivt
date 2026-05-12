@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+</head>
+<body>
+  <div id="app">
+
+    <header class="homey-header" style="margin-bottom: 0">
+      <h1 class="homey-title">IVT Anywhere</h1>
+      <p class="homey-subtitle">Connect your IVT heat pump via Bosch cloud login.</p>
+    </header>
+
+    <fieldset class="homey-form-fieldset" style="margin-top: 0">
+
+      <!-- Step 1: Serial + interval -->
+      <div class="homey-form-group">
+        <label class="homey-form-label" for="serial">Serial number</label>
+        <input class="homey-form-input" id="serial" type="text" placeholder="e.g. 176431053" />
+      </div>
+      <div class="homey-form-group">
+        <label class="homey-form-label" for="interval">Polling interval (seconds)</label>
+        <input class="homey-form-input" id="interval" type="number" value="60" min="10" max="3600" />
+      </div>
+
+      <div class="homey-form-group">
+        <button id="btnLogin" class="homey-button-primary" style="width:100%">
+          1. Open Bosch login page
+        </button>
+      </div>
+
+      <!-- Step 2: Paste callback URL -->
+      <div class="homey-form-group">
+        <label class="homey-form-label" for="callbackUrl">
+          2. After logging in, your browser will show a "page not found" or redirect error.<br>
+          Copy the full URL from the address bar and paste it below.
+        </label>
+        <textarea class="homey-form-input" id="callbackUrl" rows="3"
+          placeholder="com.bosch.tt.dashtt.pointt://app/login?code=...&state=..."></textarea>
+      </div>
+
+      <div style="display:flex; justify-content:space-between; align-items:center">
+        <span id="error" style="color:red; flex-grow:1"></span>
+        <button id="btnConnect" class="homey-button-primary" style="margin-left:10px">
+          Connect
+        </button>
+      </div>
+
+    </fieldset>
+  </div>
+
+  <script>
+    var authUrl = null;
+
+    document.getElementById('btnLogin').addEventListener('click', function() {
+      var serial = document.getElementById('serial').value.trim();
+      if (!serial) {
+        document.getElementById('error').textContent = 'Please enter the serial number first.';
+        return;
+      }
+      document.getElementById('error').textContent = '';
+
+      Homey.emit('get_auth_url', {}, function(err, url) {
+        if (err || !url) {
+          document.getElementById('error').textContent = 'Error: ' + (err ? err.message : 'no URL returned');
+          return;
+        }
+        authUrl = url;
+        Homey.popup(url);
+      });
+    });
+
+    document.getElementById('btnConnect').addEventListener('click', function() {
+      var serial = document.getElementById('serial').value.trim();
+      var interval = parseInt(document.getElementById('interval').value, 10) || 60;
+      var callbackUrl = document.getElementById('callbackUrl').value.trim();
+      var errorEl = document.getElementById('error');
+      var btn = document.getElementById('btnConnect');
+
+      errorEl.textContent = '';
+
+      if (!serial) {
+        errorEl.textContent = 'Please enter a serial number.';
+        return;
+      }
+      if (!callbackUrl) {
+        errorEl.textContent = 'Please paste the callback URL from the browser.';
+        return;
+      }
+
+      btn.classList.add('is-loading');
+      btn.disabled = true;
+
+      Homey.emit('exchange_code', { callbackUrl: callbackUrl, serial: serial, interval: interval }, function(err, device) {
+        btn.classList.remove('is-loading');
+        btn.disabled = false;
+
+        if (err || !device) {
+          errorEl.textContent = 'Error: ' + (err ? err.message : 'Unknown error');
+          return;
+        }
+
+        Homey.createDevice(device, function(err2) {
+          if (err2) {
+            errorEl.textContent = 'Error adding device: ' + err2.message;
+            return;
+          }
+          Homey.done();
+        });
+      });
+    });
+  </script>
+
+  <style>
+    body { padding: 0 16px 16px; }
+    textarea.homey-form-input { resize: vertical; font-size: 12px; font-family: monospace; }
+    .homey-form-label { font-size: 13px; line-height: 1.4; }
+  </style>
+</body>
+</html>

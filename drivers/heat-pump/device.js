@@ -1,7 +1,7 @@
 'use strict';
 
 const { Device } = require('homey');
-const { IVTClient } = require('../../lib/bosch-xmpp');
+const PointtClient = require('../../lib/pointt-client');
 const Capabilities = require('../../lib/capabilities');
 const ErrorCodes = require('../../lib/errorcodes');
 
@@ -18,12 +18,33 @@ class HeatPumpDevice extends Device {
       }
     }
 
-    // Initialize the client using user settings
+    // Initialize the client using stored tokens
     try {
-      this.client = await this.getClient(this.getSettings());
+      const deviceId = this.getSetting('deviceId');
+      const accessToken = this.getStoreValue('access_token');
+      const refreshToken = this.getStoreValue('refresh_token');
+      const tokenExpiresAt = this.getStoreValue('token_expires_at');
+
+      if (!deviceId || !accessToken || !refreshToken) {
+        throw new Error('Missing credentials — please repair the device to log in again.');
+      }
+
+      this.client = new PointtClient({
+        deviceId,
+        accessToken,
+        refreshToken,
+        tokenExpiresAt,
+        onTokenRefresh: async (tokens) => {
+          await this.setStoreValue('access_token', tokens.access_token);
+          await this.setStoreValue('refresh_token', tokens.refresh_token);
+          await this.setStoreValue('token_expires_at', tokens.token_expires_at);
+          this.log('Tokens refreshed and saved');
+        },
+      });
     } catch (e) {
       this.error(`Unable to initialize device: ${e.message}`);
       this.setUnavailable(e.message).catch(this.error);
+      return;
     }
 
     // Register Capability Listeners
@@ -35,9 +56,9 @@ class HeatPumpDevice extends Device {
     const updateInterval = Number(this.getSetting('interval')) * 1000;
     this.log(`[${this.getName()}] Update Interval: ${updateInterval}ms`);
 
-    // Initial Data Fetch (Delayed 2s to ensure SSL stability)
+    // Initial Data Fetch (Delayed 2s to allow token validation)
     setTimeout(() => {
-        this.getDeviceData().catch(err => this.error('Startup fetch failed:', err));
+      this.getDeviceData().catch(err => this.error('Startup fetch failed:', err));
     }, 2000);
 
     this.interval = setInterval(async () => {
@@ -49,6 +70,24 @@ class HeatPumpDevice extends Device {
     this.log('IVT heat pump device has been initialized');
   }
 
+  // Called by driver.js onRepair after token refresh
+  reinitClient(tokens) {
+    const deviceId = this.getSetting('deviceId');
+    this.client = new PointtClient({
+      deviceId,
+      accessToken: tokens.access_token,
+      refreshToken: tokens.refresh_token,
+      tokenExpiresAt: tokens.token_expires_at,
+      onTokenRefresh: async (newTokens) => {
+        await this.setStoreValue('access_token', newTokens.access_token);
+        await this.setStoreValue('refresh_token', newTokens.refresh_token);
+        await this.setStoreValue('token_expires_at', newTokens.token_expires_at);
+        this.log('Tokens refreshed and saved');
+      },
+    });
+    this.log('Client re-initialized after repair');
+  }
+
   // --- CONTROL HANDLERS ---
 
   async onCapabilityTargetTemperature(value) {
@@ -56,7 +95,7 @@ class HeatPumpDevice extends Device {
     const endpoint = '/heatingCircuits/hc1/temperatureRoomSetpoint';
     const payload = { value: parseFloat(value) };
     try {
-      if (this.client && typeof this.client.put === 'function') {
+      if (this.client) {
         await this.client.put(endpoint, payload);
         return Promise.resolve();
       } else { throw new Error('Client not ready'); }
@@ -71,7 +110,7 @@ class HeatPumpDevice extends Device {
     const endpoint = '/dhwCircuits/dhw1/operationMode';
     const payload = { value: value };
     try {
-      if (this.client && typeof this.client.put === 'function') {
+      if (this.client) {
         await this.client.put(endpoint, payload);
         return Promise.resolve();
       } else { throw new Error('Client not ready'); }
@@ -86,7 +125,7 @@ class HeatPumpDevice extends Device {
     const endpoint = '/dhwCircuits/dhw1/charge';
     const payload = { value: value ? 'start' : 'stop' };
     try {
-      if (this.client && typeof this.client.put === 'function') {
+      if (this.client) {
         await this.client.put(endpoint, payload);
         return Promise.resolve();
       } else { throw new Error('Client not ready'); }
@@ -111,17 +150,17 @@ class HeatPumpDevice extends Device {
         const res = await this.client.get(endpoint);
 
         if (value.name.includes('meter_power')) {
-          const currentHour = new Date().getHours();  
-          const idx = Math.max(0, currentHour - 2);  
-          const currentHourObject = res.recording?.[idx];  
-          if (!currentHourObject || !currentHourObject.c) { continue; }  
-          result = currentHourObject.y / currentHourObject.c;  
+          const currentHour = new Date().getHours();
+          const idx = Math.max(0, currentHour - 2);
+          const currentHourObject = res.recording?.[idx];
+          if (!currentHourObject || !currentHourObject.c) { continue; }
+          result = currentHourObject.y / currentHourObject.c;
 
         } else {
           result = res.value;
           // Ensure Number type for temperatures to support Thermostat Dial
           if (typeof result === 'string' && !isNaN(result)) {
-             result = parseFloat(result);
+            result = parseFloat(result);
           }
         }
         this.updateValue(value.name, result);
@@ -172,29 +211,6 @@ class HeatPumpDevice extends Device {
 
     if (!this.isWriting) {
       await this.updateCOP();
-    }
-
-    // TEMP DIAGNOSTIC: test /emon/ recording endpoints
-    if (!this.isWriting) {
-      const emonPaths = [
-        '/recordings/heatSources/emon/total/compressor',
-        '/recordings/heatSources/emon/total/eheater',
-        '/recordings/heatSources/emon/total/outputProduced',
-      ];
-      for (const path of emonPaths) {
-        try {
-          const res = await this.client.get(path);
-          const recording = res?.recording;
-          if (Array.isArray(recording) && recording.length > 0) {
-            const last = recording[recording.length - 1];
-            this.log(`[EMON] ${path} → last entry: y=${last.y}, c=${last.c}, d=${last.d} (${recording.length} entries)`);
-          } else {
-            this.log(`[EMON] ${path} → response: ${JSON.stringify(res)}`);
-          }
-        } catch (err) {
-          this.log(`[EMON] ${path} → ERROR: ${err.message}`);
-        }
-      }
     }
   }
 
@@ -261,11 +277,11 @@ class HeatPumpDevice extends Device {
         this.triggerAlarmStatusChange(isAlarm);
         this.setCapabilityValue(capability, isAlarm).catch(this.error);
       }
-      return; 
+      return;
     }
 
     if (this.getCapabilityValue(capability) !== value) {
-        await this.setCapabilityValue(capability, value).catch(this.error);
+      await this.setCapabilityValue(capability, value).catch(this.error);
     }
   }
 
@@ -281,15 +297,15 @@ class HeatPumpDevice extends Device {
         };
         await this.homey.flow.getDeviceTriggerCard('alarm_status_error').trigger(this, tokens);
       } catch (error) { this.error(error); }
-    } else if (this.getCapabilityValue('alarm_status') === true) {  
-      this.homey.flow.getDeviceTriggerCard('alarm_status_ok').trigger(this).catch(this.error);  
+    } else if (this.getCapabilityValue('alarm_status') === true) {
+      this.homey.flow.getDeviceTriggerCard('alarm_status_ok').trigger(this).catch(this.error);
     }
   }
 
   async onAdded() { this.log('Device added'); }
 
   async onSettings({ oldSettings, newSettings, changedKeys }) {
-    if (oldSettings.interval !== newSettings.interval) {
+    if (changedKeys.includes('interval')) {
       clearInterval(this.interval);
       this.interval = setInterval(async () => {
         if (!this.isWriting) {
@@ -297,60 +313,10 @@ class HeatPumpDevice extends Device {
         }
       }, newSettings.interval * 1000);
     }
-
-    // Reconnect if credentials changed
-    if (oldSettings.serial !== newSettings.serial || oldSettings.key !== newSettings.key || oldSettings.password !== newSettings.password) {
-      if (this.client) this.client.end();
-      this.client = await this.getClient(newSettings);
-    }
-  }
-
-  async getClient(settings) {
-    const client = IVTClient({
-      serialNumber: settings.serial,
-      accessKey: settings.key,
-      password: settings.password,
-      retryTimeout: 10000, 
-      maxRetries: 5
-    });
-
-    client.on('error', (err) => { 
-        // Log basic error message but prevent app crash
-        this.error('XMPP Client Error:', err.message); 
-    });
-
-    client.put = function(uri, data) {
-        const encrypted = this.encrypt(typeof data === 'string' ? data : JSON.stringify(data));
-        const separator = '\n\n';
-        const message = this.buildMessage([
-          `PUT ${ uri } HTTP/1.1`,
-          `User-Agent: ${ this.USERAGENT }`,
-          `Content-Type: application/json`,
-          `Content-Length: ${ encrypted.length }`,
-          `Seq-No: ${ this.seqno++ }`,
-          ``,
-          encrypted
-        ].join(separator));
-
-        return this.send(message).then(response => {
-          const status = Number(response.statusCode || 500);
-          if (status >= 300) {
-            const error = new Error('INVALID_RESPONSE');
-            error.response = response;
-            throw error;
-          } else if (status === 204) { response.body = null; }
-          return response.body || { status : 'ok' };
-        });
-    };
-
-    await client.connect();
-    this.log(`Device connected`);
-    return client;
   }
 
   async onDeleted() {
     clearInterval(this.interval);
-    if (this.client) this.client.end();
   }
 }
 

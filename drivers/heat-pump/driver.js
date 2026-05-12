@@ -1,93 +1,125 @@
 'use strict';
 
 const Homey = require('homey');
-const Device = require('./device');
+const PointtClient = require('../../lib/pointt-client');
 
 class HeatPumpDriver extends Homey.Driver {
 
-  // Pairing
   onPair(session) {
     this.log('Pairing started');
-    session.setHandler('validate_device', async (data) => {
-      const pairingDevice = {
-        name: 'IVT Heat pump',
-        data: {
-          id: data.serial,
-        },
-        settings: {
-          interval: data.interval,
-          serial: data.serial,
-          key: data.key,
-          password: data.password,
-        },
-      };
+
+    session.setHandler('get_auth_url', async () => {
+      const url = PointtClient.buildAuthUrl();
+      this.log('Auth URL built:', url.slice(0, 80) + '...');
+      return url;
+    });
+
+    session.setHandler('exchange_code', async ({ callbackUrl, serial, interval }) => {
+      this.log(`exchange_code: serial=${serial}, interval=${interval}`);
+
+      // Extract code from pasted callback URL
+      let code;
+      try {
+        code = PointtClient.extractCode(callbackUrl);
+        this.log('Extracted code, length:', code.length);
+      } catch (err) {
+        this.log('extractCode failed:', err.message);
+        throw new Error('Could not find authorization code in the URL. Please paste the full address bar URL.');
+      }
+
+      // Exchange code for tokens
+      let tokens;
+      try {
+        tokens = await PointtClient.exchangeCode(code);
+        this.log('Token exchange successful, expires_at:', new Date(tokens.token_expires_at).toISOString());
+      } catch (err) {
+        this.log('Token exchange failed:', err.message, err.body || '');
+        throw new Error(`Login failed: ${err.message}`);
+      }
+
+      // Validate by fetching a live endpoint
+      const client = new PointtClient({
+        deviceId: serial,
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token,
+        tokenExpiresAt: tokens.token_expires_at,
+      });
 
       try {
-        await this.validateDevice(pairingDevice);
-        return pairingDevice;
+        this.log('Validating credentials against Pointt API...');
+        await client.get('/heatingCircuits/hc1/roomtemperature');
+        this.log('Validation successful');
       } catch (err) {
-        this.log(`There was an error: ${err}`);
-        return Promise.reject(err);
+        this.log('Validation failed:', err.message, 'statusCode:', err.statusCode);
+        if (err.statusCode === 404) {
+          throw new Error('Device not found. Check the serial number.');
+        }
+        if (err.statusCode === 401 || err.statusCode === 403) {
+          throw new Error('Authorization failed. Please log in again.');
+        }
+        throw new Error(`Could not connect to heat pump: ${err.message}`);
       }
+
+      // Check for duplicate
+      let existing;
+      try {
+        existing = this.getDevice({ id: serial });
+      } catch (_) { /* device does not exist — good */ }
+
+      if (existing instanceof Homey.Device) {
+        this.log('Device already registered');
+        throw new Error('This heat pump is already added.');
+      }
+
+      return {
+        name: 'IVT Heat pump',
+        data: { id: serial },
+        store: {
+          access_token: tokens.access_token,
+          refresh_token: tokens.refresh_token,
+          token_expires_at: tokens.token_expires_at,
+        },
+        settings: {
+          deviceId: serial,
+          interval: Number(interval) || 60,
+        },
+      };
     });
   }
 
-  async validateDevice(data) {
-    const key = data.settings.key || '';
-    const pwd = data.settings.password || '';
-    this.log(`Validating device: serial=${data.settings.serial}`);
-    this.log(`  key length=${key.length}, key (no dashes)=${key.replace(/-/g,'').slice(0,6)}...`);
-    this.log(`  password length=${pwd.length}, password starts=${pwd.slice(0,2)}...`);
+  onRepair(session, device) {
+    this.log('Repair started for device:', device.getData().id);
 
-    // Check and see if we can connect to the backend with the supplied credentials.
-    let client;
-    try {
-      client = await Device.prototype.getClient.call(this, data.settings);
-      this.log('XMPP client connected successfully');
-    } catch (e) {
-      this.log('unable to instantiate client:', e.message, e.stack);
-      throw new Error(e);
-    }
+    session.setHandler('get_auth_url', async () => {
+      return PointtClient.buildAuthUrl();
+    });
 
-    let device;
-    // Check for duplicate.
-    try {
-      device = this.getDevice(data.data);
-    } catch (err) {
-      // Device does not exist, hooray!
-    }
-
-    if (device instanceof Homey.Device) {
-      this.log('device is already registered');
-      client.end();
-      throw new Error('Device is already registered');
-    }
-
-    // Retrieve status to see if we can successfully load data from backend.
-    try {
-      this.log('Fetching /heatingCircuits/hc1/roomtemperature to validate...');
-      const res = await client.get('/heatingCircuits/hc1/roomtemperature');
-      this.log('Validation response:', JSON.stringify(res));
-    } catch (e) {
-      this.log('Validation fetch failed:', e.message);
-      this.log('Error details:', JSON.stringify({
-        name: e.name,
-        message: e.message,
-        statusCode: e.statusCode || e.response?.statusCode,
-        body: e.response?.body,
-        stack: e.stack,
-      }));
-      if (e instanceof SyntaxError) {
-        this.log('invalid credentials');
-        throw new Error('Invalid credentials');
+    session.setHandler('exchange_code', async ({ callbackUrl }) => {
+      let code;
+      try {
+        code = PointtClient.extractCode(callbackUrl);
+      } catch (err) {
+        throw new Error('Could not find authorization code in the URL.');
       }
-      throw new Error(e.message);
-    } finally {
-      client.end();
-    }
 
-    // Everything checks out.
-    return true;
+      let tokens;
+      try {
+        tokens = await PointtClient.exchangeCode(code);
+      } catch (err) {
+        throw new Error(`Login failed: ${err.message}`);
+      }
+
+      // Save new tokens to device store
+      await device.setStoreValue('access_token', tokens.access_token);
+      await device.setStoreValue('refresh_token', tokens.refresh_token);
+      await device.setStoreValue('token_expires_at', tokens.token_expires_at);
+
+      // Re-initialize the client on the device with new tokens
+      device.reinitClient(tokens);
+
+      this.log('Repair successful — tokens updated');
+      return true;
+    });
   }
 
 }
