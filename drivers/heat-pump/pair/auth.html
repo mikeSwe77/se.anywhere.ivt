@@ -13,42 +13,47 @@
 
     <fieldset class="homey-form-fieldset" style="margin-top: 0">
 
-      <!-- ── Step 1: Open login link ─────────────────────────────────────── -->
+      <!-- ── Step 1: Copy login URL ──────────────────────────────────────── -->
       <div class="step-label">Step 1 — Log in with Bosch</div>
+
+      <p class="step-hint">
+        Copy the URL below, open it in Safari (or any browser), and log in with
+        your <strong>Bosch&nbsp;/&nbsp;SingleKey&nbsp;ID</strong> account.
+      </p>
+
+      <div id="urlLoading" style="font-size:13px;color:#999;margin-bottom:12px">Loading login URL…</div>
 
       <div id="urlBox" style="display:none; margin-bottom:12px">
         <div class="url-row">
           <input class="homey-form-input url-display" id="authUrlDisplay" type="text" readonly />
           <button id="btnCopy" class="action-btn" title="Copy URL">Copy</button>
-          <button id="btnOpen" class="action-btn action-btn--primary">Open ↗</button>
         </div>
       </div>
-      <div id="urlLoading" style="font-size:13px;color:#999;margin-bottom:12px">Loading login URL…</div>
 
-      <!-- ── Step 2: Paste URL and get code ─────────────────────────────── -->
-      <div class="step-label" style="margin-top:16px">Step 2 — Get the authorization code</div>
+      <!-- ── Step 2: Paste URL back ──────────────────────────────────────── -->
+      <div class="step-label" style="margin-top:16px">Step 2 — Paste the URL from Safari</div>
 
       <p class="step-hint" id="hintDefault">
-        After logging in, copy the URL shown in your browser's address bar and paste it below.
-        It can be the redirect page URL (<code>singlekey-id.com/sv-se/redirection…</code>)
-        or the final callback URL (<code>com.bosch.tt.dashtt.pointt://…</code>).
+        After logging in, Safari will show a <em>"cannot open"</em> error.
+        Copy the full URL from Safari's address bar
+        (starts with <code>com.bosch.tt.dashtt.pointt://</code>) and paste it below.
       </p>
 
-      <!-- shown when a redirection-page URL is pasted -->
+      <!-- shown when a redirection-page URL is pasted instead of the deep link -->
       <div id="hintRedirection" style="display:none">
         <p class="step-hint step-hint--success">
-          ✓ Login successful! Now click <strong>Get Code ↗</strong> to open a new browser tab.
-          When the tab shows a <em>"cannot open"</em> error, the address bar will contain
-          your code URL starting with <code>com.bosch.tt…</code> — copy it and paste it
-          in the field below.
+          ✓ Login detected! Copy the URL below, open it in Safari.
+          When Safari shows a <em>"cannot open"</em> error, copy the URL from
+          Safari's address bar and paste it in the field below.
         </p>
-        <div class="url-row" style="margin-bottom:12px">
-          <button id="btnGetCode" class="action-btn action-btn--primary" style="flex:1; justify-content:center">Get Code ↗</button>
+        <div class="url-row" style="margin-bottom: 10px">
+          <input class="homey-form-input url-display" id="codeUrlDisplay" type="text" readonly />
+          <button id="btnCopyCode" class="action-btn" title="Copy code URL">Copy</button>
         </div>
       </div>
 
       <div class="homey-form-group">
-        <label class="homey-form-label" for="callbackUrl">URL from browser address bar</label>
+        <label class="homey-form-label" for="callbackUrl">URL from Safari address bar</label>
         <input class="homey-form-input" id="callbackUrl" type="text"
                placeholder="Paste URL here…" autocomplete="off" />
       </div>
@@ -82,6 +87,28 @@
       el.style.color = isError ? 'red' : '#666';
     }
 
+    // ── Copy helper (execCommand fallback — works in sandboxed frames) ────
+    function copyText(text, btn) {
+      // Create a temporary textarea to hold the text
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      try {
+        document.execCommand('copy');
+        btn.textContent = 'Copied!';
+        setTimeout(function() { btn.textContent = 'Copy'; }, 2000);
+      } catch (e) {
+        // Select the source input so user can Cmd+C manually
+        btn.textContent = 'Select → Cmd+C';
+        setTimeout(function() { btn.textContent = 'Copy'; }, 3000);
+      }
+      document.body.removeChild(ta);
+    }
+
     // ── Load auth URL on page open ─────────────────────────────────────────
     Homey.emit('get_auth_url', {}, function(err, url) {
       document.getElementById('urlLoading').style.display = 'none';
@@ -95,48 +122,17 @@
       document.getElementById('btnConnect').disabled = false;
     });
 
-    // ── Open a URL using the best available method ────────────────────────
-    function openUrl(url) {
-      setStatus('Opening browser…', false);
-      // Method 1: Homey.openURL (preferred — opens system browser on mobile)
-      if (typeof Homey.openURL === 'function') {
-        try { Homey.openURL(url); return; } catch (e) { /* fall through */ }
-      }
-      // Method 2: window.open with explicit location bar
-      var w = window.open(url, '_blank', 'location=yes,toolbar=yes,width=600,height=550');
-      if (w) return;
-      // Method 3: navigate in place (last resort — leaves pairing view)
-      setStatus('Cannot open browser automatically. Copy the URL above and open it manually in Safari.', true);
-    }
-
-    // ── Open login URL in system browser ──────────────────────────────────
-    document.getElementById('btnOpen').addEventListener('click', function() {
-      if (!authUrl) { setStatus('Login URL not ready yet.', true); return; }
-      openUrl(authUrl);
-    });
-
-    // ── Get Code button — opens callback URL in system browser ────────────
-    document.getElementById('btnGetCode').addEventListener('click', function() {
-      var url = this.dataset.url;
-      if (!url) { setStatus('Paste the redirection URL first.', true); return; }
-      openUrl(url);
-    });
-
-    // ── Copy URL button ────────────────────────────────────────────────────
+    // ── Copy auth URL button ───────────────────────────────────────────────
     document.getElementById('btnCopy').addEventListener('click', function() {
       if (!authUrl) return;
-      var btn = this;
-      if (navigator.clipboard) {
-        navigator.clipboard.writeText(authUrl).then(function() {
-          btn.textContent = 'Copied!';
-          setTimeout(function() { btn.textContent = 'Copy'; }, 2000);
-        });
-      } else {
-        document.getElementById('authUrlDisplay').select();
-        document.execCommand('copy');
-        btn.textContent = 'Copied!';
-        setTimeout(function() { btn.textContent = 'Copy'; }, 2000);
-      }
+      copyText(authUrl, this);
+    });
+
+    // ── Copy code URL button ───────────────────────────────────────────────
+    document.getElementById('btnCopyCode').addEventListener('click', function() {
+      var url = document.getElementById('codeUrlDisplay').value;
+      if (!url) return;
+      copyText(url, this);
     });
 
     // ── Detect URL type when user pastes ──────────────────────────────────
@@ -159,16 +155,11 @@
       var callbackUrl = parseRedirectionUrl(val);
       var isRedirection = !!callbackUrl;
 
-      // Toggle hint sections
       document.getElementById('hintDefault').style.display     = isRedirection ? 'none' : '';
       document.getElementById('hintRedirection').style.display = isRedirection ? '' : 'none';
 
       if (isRedirection) {
-        // Store the callback URL on the button for the click handler
-        document.getElementById('btnGetCode').dataset.url = callbackUrl;
-
-        // Also try polling a popup automatically (works on Chrome/Firefox)
-        startPopupPoll(callbackUrl);
+        document.getElementById('codeUrlDisplay').value = callbackUrl;
       }
     }
 
@@ -177,38 +168,13 @@
       setTimeout(onUrlInput, 50);
     });
 
-    // ── Popup polling (silent, Chrome/Firefox) ────────────────────────────
-    function startPopupPoll(callbackUrl) {
-      clearInterval(pollTimer);
-      var popup = window.open(callbackUrl, 'ivtCodeFetch');
-      if (!popup) return; // blocked — user will use the manual link
-
-      var attempts = 0;
-      pollTimer = setInterval(function() {
-        attempts++;
-        if (!popup || popup.closed) { clearInterval(pollTimer); return; }
-        try {
-          var loc = popup.location.href;
-          if (loc && loc.indexOf('code=') !== -1) {
-            clearInterval(pollTimer);
-            try { popup.close(); } catch(e) {}
-            // Auto-fill and connect
-            document.getElementById('callbackUrl').value = loc;
-            doConnect(loc);
-          }
-        } catch (e) { /* cross-origin — keep waiting */ }
-        if (attempts > 60) { clearInterval(pollTimer); try { popup.close(); } catch(e) {} }
-      }, 500);
-    }
-
     // ── Connect button ─────────────────────────────────────────────────────
     document.getElementById('btnConnect').addEventListener('click', function() {
       var val = document.getElementById('callbackUrl').value.trim();
-      if (!val) { setStatus('Please paste the URL from your browser.', true); return; }
+      if (!val) { setStatus('Please paste the URL from Safari.', true); return; }
 
-      // If it's still a redirection URL (user didn't get the deep link yet), guide them
       if (parseRedirectionUrl(val)) {
-        setStatus('Please use the "Get Code ↗" link above to get the final callback URL first.', true);
+        setStatus('Please open the code URL shown above in Safari first, then paste the result.', true);
         return;
       }
 
@@ -259,11 +225,6 @@
       border-radius: 4px; background: #fff; font-size: 13px; cursor: pointer;
       white-space: nowrap; display: inline-flex; align-items: center;
       text-decoration: none; color: #333;
-      pointer-events: auto !important; /* override any fieldset/Homey CSS */
-      position: relative; z-index: 1;
-    }
-    .action-btn--primary {
-      background: var(--homey-color-primary, #ef645e); color: #fff; border-color: transparent;
     }
     .muted { font-weight: normal; color: #999; }
     code { font-size: 11px; background: #f4f4f4; padding: 1px 4px; border-radius: 3px; }
