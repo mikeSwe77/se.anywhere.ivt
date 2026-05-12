@@ -8,44 +8,20 @@ class HeatPumpDriver extends Homey.Driver {
   onPair(session) {
     this.log('Pairing started');
 
-    session.setHandler('get_auth_url', async () => {
-      const url = PointtClient.buildAuthUrl();
-      this.log('Auth URL built:', url.slice(0, 80) + '...');
-      return url;
-    });
+    session.setHandler('authenticate', async ({ email, password, serial, interval }) => {
+      this.log(`authenticate: serial=${serial}, interval=${interval}, email=${email}`);
 
-    session.setHandler('exchange_code', async ({ callbackUrl, serial, interval }) => {
-      this.log(`exchange_code: serial=${serial}, interval=${interval}`);
-
-      // Extract code — handles both the deep link and the singlekey-id.com redirection page URL
-      let code;
-      try {
-        if (callbackUrl.includes('singlekey-id.com')) {
-          // Safari desktop: user copied the intermediate redirection page URL.
-          // Complete the OAuth callback server-side by following the redirect chain.
-          this.log('Detected singlekey-id redirection URL — completing callback server-side');
-          code = await PointtClient.completeViaRedirectionUrl(callbackUrl);
-        } else {
-          // Direct deep link (com.bosch.tt.dashtt.pointt://...) — from iOS or another browser
-          code = PointtClient.extractCode(callbackUrl);
-        }
-        this.log('Authorization code obtained, length:', code.length);
-      } catch (err) {
-        this.log('Code extraction failed:', err.message);
-        throw new Error(`Could not get authorization code: ${err.message}`);
-      }
-
-      // Exchange code for tokens
+      // Full headless OAuth flow — no browser popup needed
       let tokens;
       try {
-        tokens = await PointtClient.exchangeCode(code);
-        this.log('Token exchange successful, expires_at:', new Date(tokens.token_expires_at).toISOString());
+        tokens = await PointtClient.authenticate(email, password);
+        this.log('Authentication successful, token expires:', new Date(tokens.token_expires_at).toISOString());
       } catch (err) {
-        this.log('Token exchange failed:', err.message, err.body || '');
-        throw new Error(`Login failed: ${err.message}`);
+        this.log('Authentication failed:', err.message);
+        throw new Error(err.message);
       }
 
-      // Validate by fetching a live endpoint
+      // Validate by fetching a live endpoint for this specific device (serial)
       const client = new PointtClient({
         deviceId: serial,
         accessToken: tokens.access_token,
@@ -54,30 +30,20 @@ class HeatPumpDriver extends Homey.Driver {
       });
 
       try {
-        this.log('Validating credentials against Pointt API...');
+        this.log('Validating device serial against Pointt API...');
         await client.get('/heatingCircuits/hc1/roomtemperature');
-        this.log('Validation successful');
+        this.log('Device validation successful');
       } catch (err) {
-        this.log('Validation failed:', err.message, 'statusCode:', err.statusCode);
-        if (err.statusCode === 404) {
-          throw new Error('Device not found. Check the serial number.');
-        }
-        if (err.statusCode === 401 || err.statusCode === 403) {
-          throw new Error('Authorization failed. Please log in again.');
-        }
-        throw new Error(`Could not connect to heat pump: ${err.message}`);
+        this.log('Device validation failed:', err.message, 'statusCode:', err.statusCode);
+        if (err.statusCode === 404) throw new Error('Heat pump not found. Check the serial number.');
+        if (err.statusCode === 401 || err.statusCode === 403) throw new Error('Authorization failed for this device.');
+        throw new Error(`Could not reach heat pump: ${err.message}`);
       }
 
       // Check for duplicate
       let existing;
-      try {
-        existing = this.getDevice({ id: serial });
-      } catch (_) { /* device does not exist — good */ }
-
-      if (existing instanceof Homey.Device) {
-        this.log('Device already registered');
-        throw new Error('This heat pump is already added.');
-      }
+      try { existing = this.getDevice({ id: serial }); } catch (_) { /* does not exist — good */ }
+      if (existing instanceof Homey.Device) throw new Error('This heat pump is already added.');
 
       return {
         name: 'IVT Heat pump',
@@ -98,37 +64,19 @@ class HeatPumpDriver extends Homey.Driver {
   onRepair(session, device) {
     this.log('Repair started for device:', device.getData().id);
 
-    session.setHandler('get_auth_url', async () => {
-      return PointtClient.buildAuthUrl();
-    });
-
-    session.setHandler('exchange_code', async ({ callbackUrl }) => {
-      let code;
-      try {
-        if (callbackUrl.includes('singlekey-id.com')) {
-          code = await PointtClient.completeViaRedirectionUrl(callbackUrl);
-        } else {
-          code = PointtClient.extractCode(callbackUrl);
-        }
-      } catch (err) {
-        throw new Error(`Could not get authorization code: ${err.message}`);
-      }
-
+    session.setHandler('authenticate', async ({ email, password }) => {
       let tokens;
       try {
-        tokens = await PointtClient.exchangeCode(code);
+        tokens = await PointtClient.authenticate(email, password);
       } catch (err) {
-        throw new Error(`Login failed: ${err.message}`);
+        throw new Error(err.message);
       }
 
-      // Save new tokens to device store
       await device.setStoreValue('access_token', tokens.access_token);
       await device.setStoreValue('refresh_token', tokens.refresh_token);
       await device.setStoreValue('token_expires_at', tokens.token_expires_at);
 
-      // Re-initialize the client on the device with new tokens
       device.reinitClient(tokens);
-
       this.log('Repair successful — tokens updated');
       return true;
     });
