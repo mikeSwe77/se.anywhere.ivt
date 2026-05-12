@@ -17,14 +17,22 @@ class HeatPumpDriver extends Homey.Driver {
     session.setHandler('exchange_code', async ({ callbackUrl, serial, interval }) => {
       this.log(`exchange_code: serial=${serial}, interval=${interval}`);
 
-      // Extract code from pasted callback URL
+      // Extract code — handles both the deep link and the singlekey-id.com redirection page URL
       let code;
       try {
-        code = PointtClient.extractCode(callbackUrl);
-        this.log('Extracted code, length:', code.length);
+        if (callbackUrl.includes('singlekey-id.com')) {
+          // Safari desktop: user copied the intermediate redirection page URL.
+          // Complete the OAuth callback server-side by following the redirect chain.
+          this.log('Detected singlekey-id redirection URL — completing callback server-side');
+          code = await PointtClient.completeViaRedirectionUrl(callbackUrl);
+        } else {
+          // Direct deep link (com.bosch.tt.dashtt.pointt://...) — from iOS or another browser
+          code = PointtClient.extractCode(callbackUrl);
+        }
+        this.log('Authorization code obtained, length:', code.length);
       } catch (err) {
-        this.log('extractCode failed:', err.message);
-        throw new Error('Could not find authorization code in the URL. Please paste the full address bar URL.');
+        this.log('Code extraction failed:', err.message);
+        throw new Error(`Could not get authorization code: ${err.message}`);
       }
 
       // Exchange code for tokens
@@ -97,9 +105,13 @@ class HeatPumpDriver extends Homey.Driver {
     session.setHandler('exchange_code', async ({ callbackUrl }) => {
       let code;
       try {
-        code = PointtClient.extractCode(callbackUrl);
+        if (callbackUrl.includes('singlekey-id.com')) {
+          code = await PointtClient.completeViaRedirectionUrl(callbackUrl);
+        } else {
+          code = PointtClient.extractCode(callbackUrl);
+        }
       } catch (err) {
-        throw new Error('Could not find authorization code in the URL.');
+        throw new Error(`Could not get authorization code: ${err.message}`);
       }
 
       let tokens;

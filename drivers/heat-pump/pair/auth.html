@@ -8,12 +8,11 @@
 
     <header class="homey-header" style="margin-bottom: 0">
       <h1 class="homey-title">IVT Anywhere</h1>
-      <p class="homey-subtitle">Connect your IVT heat pump via Bosch cloud login.</p>
+      <p class="homey-subtitle">Connect via Bosch SingleKey ID login.</p>
     </header>
 
     <fieldset class="homey-form-fieldset" style="margin-top: 0">
 
-      <!-- Step 1: Serial + interval -->
       <div class="homey-form-group">
         <label class="homey-form-label" for="serial">Serial number</label>
         <input class="homey-form-input" id="serial" type="text" placeholder="e.g. 176431053" />
@@ -29,18 +28,20 @@
         </button>
       </div>
 
-      <!-- Step 2: Paste callback URL -->
       <div class="homey-form-group">
         <label class="homey-form-label" for="callbackUrl">
-          2. After logging in, your browser will show a "page not found" or redirect error.<br>
-          Copy the full URL from the address bar and paste it below.
+          2. Log in with your SingleKey ID.<br><br>
+          After logging in you will see a page that says <strong>"Omdirigerar..."</strong> (Redirecting).
+          Safari may also show an error — click OK to dismiss it.<br><br>
+          <strong>Copy the URL from the address bar</strong> of that page and paste it below.
+          The URL starts with <code>https://singlekey-id.com/sv-se/redirection?...</code>
         </label>
-        <textarea class="homey-form-input" id="callbackUrl" rows="3"
-          placeholder="com.bosch.tt.dashtt.pointt://app/login?code=...&state=..."></textarea>
+        <textarea class="homey-form-input" id="callbackUrl" rows="4"
+          placeholder="https://singlekey-id.com/sv-se/redirection?returnUrl=..."></textarea>
       </div>
 
       <div style="display:flex; justify-content:space-between; align-items:center">
-        <span id="error" style="color:red; flex-grow:1"></span>
+        <span id="error" style="color:red; flex-grow:1; font-size:13px"></span>
         <button id="btnConnect" class="homey-button-primary" style="margin-left:10px">
           Connect
         </button>
@@ -50,8 +51,6 @@
   </div>
 
   <script>
-    var authUrl = null;
-
     document.getElementById('btnLogin').addEventListener('click', function() {
       var serial = document.getElementById('serial').value.trim();
       if (!serial) {
@@ -65,7 +64,6 @@
           document.getElementById('error').textContent = 'Error: ' + (err ? err.message : 'no URL returned');
           return;
         }
-        authUrl = url;
         Homey.popup(url);
       });
     });
@@ -79,17 +77,12 @@
 
       errorEl.textContent = '';
 
-      if (!serial) {
-        errorEl.textContent = 'Please enter a serial number.';
-        return;
-      }
-      if (!callbackUrl) {
-        errorEl.textContent = 'Please paste the callback URL from the browser.';
-        return;
-      }
+      if (!serial) { errorEl.textContent = 'Please enter a serial number.'; return; }
+      if (!callbackUrl) { errorEl.textContent = 'Please paste the URL from the browser.'; return; }
 
       btn.classList.add('is-loading');
       btn.disabled = true;
+      errorEl.textContent = 'Completing login…';
 
       Homey.emit('exchange_code', { callbackUrl: callbackUrl, serial: serial, interval: interval }, function(err, device) {
         btn.classList.remove('is-loading');
@@ -100,11 +93,9 @@
           return;
         }
 
+        errorEl.textContent = '';
         Homey.createDevice(device, function(err2) {
-          if (err2) {
-            errorEl.textContent = 'Error adding device: ' + err2.message;
-            return;
-          }
+          if (err2) { errorEl.textContent = 'Error adding device: ' + err2.message; return; }
           Homey.done();
         });
       });
@@ -114,7 +105,8 @@
   <style>
     body { padding: 0 16px 16px; }
     textarea.homey-form-input { resize: vertical; font-size: 12px; font-family: monospace; }
-    .homey-form-label { font-size: 13px; line-height: 1.4; }
+    .homey-form-label { font-size: 13px; line-height: 1.5; }
+    code { background: #f0f0f0; padding: 1px 4px; border-radius: 3px; font-size: 11px; }
   </style>
 </body>
 </html>
