@@ -1,8 +1,8 @@
 {
   "type": "boolean",
   "title": {
-    "en": "Extra Hot Water",
-    "sv": "Extra Varmvatten"
+    "en": "Power Boost",
+    "sv": "Effektboost"
   },
   "uiComponent": "button",
   "getable": true,

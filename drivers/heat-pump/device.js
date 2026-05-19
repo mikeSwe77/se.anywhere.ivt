@@ -50,7 +50,7 @@ class HeatPumpDevice extends Device {
     // Register Capability Listeners
     this.registerCapabilityListener('target_temperature', this.onCapabilityTargetTemperature.bind(this));
     this.registerCapabilityListener('ivt_hotwater_mode', this.onCapabilityHotWaterMode.bind(this));
-    this.registerCapabilityListener('hotwater_boost', this.onCapabilityHotWaterBoost.bind(this));
+    this.registerCapabilityListener('power_boost', this.onCapabilityPowerBoost.bind(this));
 
     // Setup Polling
     const updateInterval = Number(this.getSetting('interval')) * 1000;
@@ -120,7 +120,7 @@ class HeatPumpDevice extends Device {
     } finally { this.isWriting = false; }
   }
 
-  async onCapabilityHotWaterBoost(value) {
+  async onCapabilityPowerBoost(value) {
     this.isWriting = true;
     const endpoint = '/dhwCircuits/dhw1/charge';
     const payload = { value: value ? 'start' : 'stop' };
@@ -206,9 +206,9 @@ class HeatPumpDevice extends Device {
       try {
         const res = await this.client.get('/dhwCircuits/dhw1/charge');
         if (res && res.value !== undefined) {
-          this.updateValue('hotwater_boost', res.value === 'start');
+          this.updateValue('power_boost', res.value === 'start');
         }
-      } catch (err) { this.log('Failed to fetch hotwater_boost:', err.message); }
+      } catch (err) { this.log('Failed to fetch power_boost:', err.message); }
     }
 
     if (!this.isWriting) {

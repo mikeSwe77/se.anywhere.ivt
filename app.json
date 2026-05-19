@@ -182,11 +182,11 @@
       {
         "id": "extra_hot_water",
         "title": {
-          "en": "Extra Hot Water",
-          "sv": "Extra Varmvatten"
+          "en": "Power Boost",
+          "sv": "Effektboost"
         },
         "titleFormatted": {
-          "en": "[[action]] Extra Hot Water on [[device]]",
+          "en": "[[action]] Power Boost on [[device]]",
           "sv": "[[action]] extra varmvatten på [[device]]"
         },
         "hint": {
@@ -244,7 +244,7 @@
         "measure_temperature.outdoor",
         "measure_temperature.water",
         "ivt_hotwater_mode",
-        "hotwater_boost",
+        "power_boost",
         "alarm_status",
         "meter_power.last_hour_eheater",
         "meter_power.last_hour_total",
@@ -336,10 +336,10 @@
             "sv": "Varmvattenläge"
           }
         },
-        "hotwater_boost": {
+        "power_boost": {
           "title": {
-            "en": "Extra Hot Water",
-            "sv": "Extra Varmvatten"
+            "en": "Power Boost",
+            "sv": "Effektboost"
           }
         },
         "meter_power.last_hour_eheater": {
@@ -506,11 +506,11 @@
       "max": 20,
       "decimals": 1
     },
-    "hotwater_boost": {
+    "power_boost": {
       "type": "boolean",
       "title": {
-        "en": "Extra Hot Water",
-        "sv": "Extra Varmvatten"
+        "en": "Power Boost",
+        "sv": "Effektboost"
       },
       "uiComponent": "button",
       "getable": true,
