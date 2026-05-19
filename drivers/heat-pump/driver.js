@@ -1,151 +1,100 @@
 'use strict';
 
 const Homey = require('homey');
-const PointtClient = require('../../lib/pointt-client');
+const Device = require('./device');
 
 class HeatPumpDriver extends Homey.Driver {
 
+  // Pairing
   onPair(session) {
     this.log('Pairing started');
-
-    // Step 1: Build the SingleKey ID OAuth2 PKCE authorization URL
-    session.setHandler('get_auth_url', async () => {
-      const url = PointtClient.buildAuthUrl();
-      this.log('Auth URL built:', url.slice(0, 80));
-      return url;
-    });
-
-    // Step 2: Exchange the authorization code for tokens + validate device
-    session.setHandler('exchange_code', async ({ callbackUrl, serial, interval }) => {
-      this.log(`exchange_code: callbackUrl=${callbackUrl ? callbackUrl.slice(0, 60) : '(empty)'}, serial=${serial || '(auto)'}, interval=${interval}`);
-
-      // Extract authorization code — try direct extraction first, then server-side completion
-      let code;
-      try {
-        code = PointtClient.extractCode(callbackUrl);
-        this.log('Authorization code extracted directly');
-      } catch (_) {
-        // No code in the pasted URL — try completing the OAuth callback server-side
-        // (works when the server stores interaction state by f= token, not by session cookie)
-        this.log('No code in URL — attempting server-side callback completion...');
-        try {
-          code = await PointtClient.tryCompleteRedirection(callbackUrl);
-          this.log('Server-side callback completion succeeded');
-        } catch (err) {
-          this.log('Server-side completion failed:', err.message);
-          throw new Error(
-            'Could not complete sign-in automatically. ' +
-            'In Chrome with DevTools open (F12): log in and click Continue — ' +
-            'then check the Console tab for a "Failed to launch com.bosch.tt…" error ' +
-            'and copy that full URL, or use the Network tab to find the ' +
-            '/authorize/callback request and copy its Location response header.'
-          );
-        }
-      }
-
-      // Exchange code for tokens
-      let tokens;
-      try {
-        tokens = await PointtClient.exchangeCode(code);
-        this.log('Tokens obtained, expires:', new Date(tokens.token_expires_at).toISOString());
-      } catch (err) {
-        this.log('Token exchange failed:', err.message);
-        throw new Error(`Token exchange failed: ${err.message}`);
-      }
-
-      // Discover device ID — use provided serial or auto-discover from API
-      let deviceId = serial ? String(serial).trim() : '';
-
-      if (!deviceId) {
-        try {
-          this.log('No serial provided — querying gateway list from Pointt API...');
-          const gateways = await PointtClient.listGateways(tokens.access_token);
-          this.log('Gateways found:', JSON.stringify(gateways));
-          if (!gateways.length) throw new Error('No heat pumps found on this account.');
-          if (gateways.length === 1) {
-            deviceId = gateways[0].id;
-            this.log('Auto-selected device:', deviceId);
-          } else {
-            const names = gateways.map(g => `${g.id} (${g.name})`).join(', ');
-            throw new Error(`Multiple heat pumps found: ${names}. Please enter the serial number manually.`);
-          }
-        } catch (err) {
-          if (err.message.includes('Multiple') || err.message.includes('No heat pumps')) throw err;
-          this.log('Gateway list failed:', err.message);
-          throw new Error('Could not discover device. Please enter the serial number manually.');
-        }
-      }
-
-      // Validate the device is reachable
-      const client = new PointtClient({
-        deviceId,
-        accessToken: tokens.access_token,
-        refreshToken: tokens.refresh_token,
-        tokenExpiresAt: tokens.token_expires_at,
-      });
-
-      try {
-        this.log('Validating device', deviceId, 'against Pointt API...');
-        await client.get('/heatingCircuits/hc1/roomtemperature');
-        this.log('Device validation successful');
-      } catch (err) {
-        this.log('Device validation failed:', err.message, 'statusCode:', err.statusCode);
-        if (err.statusCode === 404) throw new Error(`Heat pump ${deviceId} not found. Check the serial number.`);
-        if (err.statusCode === 401 || err.statusCode === 403) throw new Error('Authorization failed. Please try again.');
-        throw new Error(`Could not reach heat pump: ${err.message}`);
-      }
-
-      // Check for duplicate
-      let existing;
-      try { existing = this.getDevice({ id: deviceId }); } catch (_) { /* does not exist — good */ }
-      if (existing instanceof Homey.Device) throw new Error('This heat pump is already added.');
-
-      return {
+    session.setHandler('validate_device', async (data) => {
+      const pairingDevice = {
         name: 'IVT Heat pump',
-        data: { id: deviceId },
-        store: {
-          access_token: tokens.access_token,
-          refresh_token: tokens.refresh_token,
-          token_expires_at: tokens.token_expires_at,
+        data: {
+          id: data.serial,
         },
         settings: {
-          deviceId,
-          interval: Number(interval) || 60,
+          interval: Number(data.interval) || 60,
+          serial: data.serial,
+          key: data.key,
+          password: data.password,
         },
       };
+
+      try {
+        await this.validateDevice(pairingDevice);
+        return pairingDevice;
+      } catch (err) {
+        this.log(`There was an error: ${err}`);
+        return Promise.reject(err);
+      }
     });
   }
 
   onRepair(session, device) {
     this.log('Repair started for device:', device.getData().id);
+    session.setHandler('validate_device', async (data) => {
+      const newSettings = {
+        interval: Number(data.interval) || Number(device.getSetting('interval')) || 60,
+        serial: data.serial,
+        key: data.key,
+        password: data.password,
+      };
 
-    session.setHandler('get_auth_url', async () => {
-      return PointtClient.buildAuthUrl();
-    });
-
-    session.setHandler('exchange_code', async ({ callbackUrl }) => {
-      let code;
+      // Validate credentials by connecting
+      const tempDevice = { data: device.getData(), settings: newSettings };
       try {
-        code = PointtClient.extractCode(callbackUrl);
+        await this.validateDevice(tempDevice);
       } catch (err) {
-        throw new Error('Invalid callback URL — could not find authorization code.');
+        this.log(`Repair validation failed: ${err}`);
+        return Promise.reject(err);
       }
 
-      let tokens;
-      try {
-        tokens = await PointtClient.exchangeCode(code);
-      } catch (err) {
-        throw new Error(`Token exchange failed: ${err.message}`);
-      }
-
-      await device.setStoreValue('access_token', tokens.access_token);
-      await device.setStoreValue('refresh_token', tokens.refresh_token);
-      await device.setStoreValue('token_expires_at', tokens.token_expires_at);
-
-      device.reinitClient(tokens);
-      this.log('Repair successful — tokens updated');
+      // Apply new settings and reconnect
+      await device.onSettings({ oldSettings: device.getSettings(), newSettings, changedKeys: Object.keys(newSettings) });
+      this.log('Repair successful');
       return true;
     });
+  }
+
+  async validateDevice(data) {
+    let client;
+    try {
+      client = await Device.prototype.getClient.call(this, data.settings);
+    } catch (e) {
+      this.log('unable to instantiate client:', e.message);
+      throw new Error(e);
+    }
+
+    // Check for duplicate.
+    let device;
+    try {
+      device = this.getDevice(data.data);
+    } catch (err) {
+      // Device does not exist — good
+    }
+
+    if (device instanceof Homey.Device) {
+      this.log('device is already registered');
+      client.end();
+      throw new Error('Device is already registered');
+    }
+
+    // Retrieve firmware version to validate credentials
+    try {
+      await client.get('/gateway/versionFirmware');
+    } catch (e) {
+      if (e instanceof SyntaxError) {
+        this.log('invalid credentials');
+        throw new Error('Invalid credentials');
+      }
+      throw new Error(e.message);
+    } finally {
+      client.end();
+    }
+
+    return true;
   }
 
 }
