@@ -18,7 +18,10 @@ class HeatPumpDevice extends Device {
       }
     }
 
-    // Connect to the XMPP backend
+    // Connect to the XMPP backend.
+    // Short delay so any pairing-validation connection (driver.js) has time
+    // to fully close on the gateway side before we open a new one.
+    await new Promise(r => setTimeout(r, 3000));
     try {
       this.client = await this.getClient(this.getSettings());
     } catch (e) {
@@ -35,10 +38,8 @@ class HeatPumpDevice extends Device {
     this.registerCapabilityListener('ivt_hotwater_mode', this.onCapabilityHotWaterMode.bind(this));
     this.registerCapabilityListener('power_boost', this.onCapabilityPowerBoost.bind(this));
 
-    // Initial fetch after short delay
-    setTimeout(() => {
-      this.getDeviceData().catch(err => this.error('Startup fetch failed:', err));
-    }, 2000);
+    // Initial data fetch
+    this.getDeviceData().catch(err => this.error('Startup fetch failed:', err));
 
     this.interval = setInterval(async () => {
       if (!this.isWriting) {
