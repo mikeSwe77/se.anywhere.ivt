@@ -17,3 +17,25 @@ documentation/
 tools/
 app.ts
 .github/
+
+# Homey Compose source (app.json is the generated output)
+.homeycompose/
+
+# Development / test files
+test-xmpp.js
+test-auth.js
+test-popup.html
+secrets.env
+.claude/
+
+# Pointt REST API (replaced by XMPP transport)
+lib/pointt-client.js
+drivers/heat-pump/pair/auth.html
+
+# bosch-xmpp: CLI tool and unused client implementations
+lib/bosch-xmpp/bin/
+lib/bosch-xmpp/example/
+lib/bosch-xmpp/lib/cli/
+lib/bosch-xmpp/lib/nefit-easy-client.js
+lib/bosch-xmpp/lib/easycontrol-client.js
+lib/bosch-xmpp/package-lock.json
