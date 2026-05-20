@@ -1,7 +1,7 @@
 'use strict';
 
 const { Device } = require('homey');
-const PointtClient = require('../../lib/pointt-client');
+const { IVTClient } = require('../../lib/bosch-xmpp');
 const Capabilities = require('../../lib/capabilities');
 const ErrorCodes = require('../../lib/errorcodes');
 
@@ -18,48 +18,28 @@ class HeatPumpDevice extends Device {
       }
     }
 
-    // Initialize the client using stored tokens
+    // Connect to the XMPP backend.
+    // Short delay so any pairing-validation connection (driver.js) has time
+    // to fully close on the gateway side before we open a new one.
+    await new Promise(r => setTimeout(r, 3000));
     try {
-      const deviceId = this.getSetting('deviceId');
-      const accessToken = this.getStoreValue('access_token');
-      const refreshToken = this.getStoreValue('refresh_token');
-      const tokenExpiresAt = this.getStoreValue('token_expires_at');
-
-      if (!deviceId || !accessToken || !refreshToken) {
-        throw new Error('Missing credentials — please repair the device to log in again.');
-      }
-
-      this.client = new PointtClient({
-        deviceId,
-        accessToken,
-        refreshToken,
-        tokenExpiresAt,
-        onTokenRefresh: async (tokens) => {
-          await this.setStoreValue('access_token', tokens.access_token);
-          await this.setStoreValue('refresh_token', tokens.refresh_token);
-          await this.setStoreValue('token_expires_at', tokens.token_expires_at);
-          this.log('Tokens refreshed and saved');
-        },
-      });
+      this.client = await this.getClient(this.getSettings());
     } catch (e) {
       this.error(`Unable to initialize device: ${e.message}`);
       this.setUnavailable(e.message).catch(this.error);
       return;
     }
 
+    const updateInterval = Number(this.getSetting('interval')) * 1000;
+    this.log(`[${this.getName()}] Update Interval: ${updateInterval}ms`);
+
     // Register Capability Listeners
     this.registerCapabilityListener('target_temperature', this.onCapabilityTargetTemperature.bind(this));
     this.registerCapabilityListener('ivt_hotwater_mode', this.onCapabilityHotWaterMode.bind(this));
     this.registerCapabilityListener('power_boost', this.onCapabilityPowerBoost.bind(this));
 
-    // Setup Polling
-    const updateInterval = Number(this.getSetting('interval')) * 1000;
-    this.log(`[${this.getName()}] Update Interval: ${updateInterval}ms`);
-
-    // Initial Data Fetch (Delayed 2s to allow token validation)
-    setTimeout(() => {
-      this.getDeviceData().catch(err => this.error('Startup fetch failed:', err));
-    }, 2000);
+    // Initial data fetch
+    this.getDeviceData().catch(err => this.error('Startup fetch failed:', err));
 
     this.interval = setInterval(async () => {
       if (!this.isWriting) {
@@ -70,22 +50,38 @@ class HeatPumpDevice extends Device {
     this.log('IVT heat pump device has been initialized');
   }
 
-  // Called by driver.js onRepair after token refresh
-  reinitClient(tokens) {
-    const deviceId = this.getSetting('deviceId');
-    this.client = new PointtClient({
-      deviceId,
-      accessToken: tokens.access_token,
-      refreshToken: tokens.refresh_token,
-      tokenExpiresAt: tokens.token_expires_at,
-      onTokenRefresh: async (newTokens) => {
-        await this.setStoreValue('access_token', newTokens.access_token);
-        await this.setStoreValue('refresh_token', newTokens.refresh_token);
-        await this.setStoreValue('token_expires_at', newTokens.token_expires_at);
-        this.log('Tokens refreshed and saved');
-      },
+  // Build and connect an IVTClient from settings
+  async getClient(settings) {
+    const client = IVTClient({
+      serialNumber: settings.serial,
+      accessKey: settings.key,
+      password: settings.password,
     });
-    this.log('Client re-initialized after repair');
+    await client.connect();
+    this.log('Device connected successfully to backend');
+
+    // The IVT gateway processes PUT requests but never sends a response stanza back.
+    // Override put() with fire-and-forget: queue the send (so it doesn't race with
+    // in-flight GETs), send immediately, and resolve without waiting for a response.
+    // The next poll will confirm the new value was applied.
+    client.put = function(uri, data) {
+      const encrypted = this.encrypt(typeof data === 'string' ? data : JSON.stringify(data));
+      const body = [
+        `PUT ${uri} HTTP/1.1`,
+        `User-Agent: ${this.USERAGENT}`,
+        `Content-Type: application/json`,
+        `Content-Length: ${encrypted.length}`,
+        ``,
+        encrypted,
+      ].join('\n\n');
+      const message = this.buildMessage(body);
+      return this.queue.add(() => {
+        this.client.send(message);
+        return Promise.resolve({ status: 'ok' });
+      });
+    };
+
+    return client;
   }
 
   // --- CONTROL HANDLERS ---
@@ -165,8 +161,6 @@ class HeatPumpDevice extends Device {
         }
         this.updateValue(value.name, result);
       } catch (err) {
-        // 403 on optional capabilities = endpoint not exposed by cloud API — skip silently
-        if (err.statusCode === 403 && value.optional) continue;
         this.log(`Failed to fetch ${value.name}:`, err.message);
       }
     }
@@ -184,9 +178,8 @@ class HeatPumpDevice extends Device {
 
     if (!this.isWriting) {
       try {
-        // currentRoomSetpoint = active setpoint (cloud-accessible, read-only).
-        // temperatureRoomSetpoint returns 403 via the Pointt cloud API.
-        const res = await this.client.get('/heatingCircuits/hc1/currentRoomSetpoint');
+        // temperatureRoomSetpoint works over XMPP (unlike Pointt cloud API)
+        const res = await this.client.get('/heatingCircuits/hc1/temperatureRoomSetpoint');
         if (res && res.value != null) {
           this.updateValue('target_temperature', parseFloat(res.value));
         }
@@ -246,7 +239,7 @@ class HeatPumpDevice extends Device {
         `/recordings/heatSources/total/energyMonitoring/consumedEnergy?interval=${today}`
       );
       const currentHour = new Date().getHours();
-      const completedHours = Math.max(0, currentHour - 1); // hours fully done
+      const completedHours = Math.max(0, currentHour - 1);
       const todayPartial = (res.recording || [])
         .slice(0, completedHours)
         .reduce((sum, slot) => sum + (slot.c > 0 ? slot.y / slot.c : 0), 0);
@@ -311,6 +304,23 @@ class HeatPumpDevice extends Device {
   async onAdded() { this.log('Device added'); }
 
   async onSettings({ oldSettings, newSettings, changedKeys }) {
+    const credentialKeys = ['serial', 'key', 'password'];
+    const credentialsChanged = changedKeys.some(k => credentialKeys.includes(k));
+
+    if (credentialsChanged) {
+      // Reconnect with new credentials
+      if (this.client) {
+        try { this.client.end(); } catch (_) {}
+      }
+      try {
+        this.client = await this.getClient(newSettings);
+        this.log('Client reconnected after credential change');
+      } catch (e) {
+        this.error('Failed to reconnect after settings change:', e.message);
+        this.setUnavailable(e.message).catch(this.error);
+      }
+    }
+
     if (changedKeys.includes('interval')) {
       clearInterval(this.interval);
       this.interval = setInterval(async () => {
@@ -323,7 +333,11 @@ class HeatPumpDevice extends Device {
 
   async onDeleted() {
     clearInterval(this.interval);
+    if (this.client) {
+      try { this.client.end(); } catch (_) {}
+    }
   }
+
 }
 
 module.exports = HeatPumpDevice;

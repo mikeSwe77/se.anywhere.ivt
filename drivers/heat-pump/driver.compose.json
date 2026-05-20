@@ -62,6 +62,6 @@
     "large": "{{driverAssetsPath}}/images/large.png",
     "xlarge": "{{driverAssetsPath}}/images/xlarge.png"
   },
-  "pair": [{ "id": "auth" }],
-  "repair": [{ "id": "auth" }]
+  "pair": [{ "id": "pair" }],
+  "repair": [{ "id": "pair" }]
 }

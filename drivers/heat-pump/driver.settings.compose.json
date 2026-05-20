@@ -7,11 +7,41 @@
     },
     "children": [
       {
-        "id": "deviceId",
-        "type": "label",
+        "id": "serial",
+        "type": "text",
         "label": {
-          "en": "Device ID (serial number)",
-          "sv": "Enhets-ID (serienummer)"
+          "en": "Serial number",
+          "sv": "Serienummer"
+        },
+        "hint": {
+          "en": "The serial number printed on your IVT heat pump.",
+          "sv": "Serienummret på din IVT värmepump."
+        },
+        "value": "-"
+      },
+      {
+        "id": "key",
+        "type": "text",
+        "label": {
+          "en": "Access key",
+          "sv": "Access key"
+        },
+        "hint": {
+          "en": "The access key printed on your IVT heat pump.",
+          "sv": "Access key på din IVT värmepump."
+        },
+        "value": "-"
+      },
+      {
+        "id": "password",
+        "type": "password",
+        "label": {
+          "en": "Device password",
+          "sv": "Enhetslösenord"
+        },
+        "hint": {
+          "en": "Set via EasyControl app: Settings → Personal → Change password.",
+          "sv": "Ange via EasyControl-appen: Inställningar → Personliga → Byt lösenord."
         },
         "value": "-"
       },
