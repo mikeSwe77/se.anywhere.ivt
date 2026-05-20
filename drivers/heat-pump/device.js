@@ -59,6 +59,28 @@ class HeatPumpDevice extends Device {
     });
     await client.connect();
     this.log('Device connected successfully to backend');
+
+    // The IVT gateway processes PUT requests but never sends a response stanza back.
+    // Override put() with fire-and-forget: queue the send (so it doesn't race with
+    // in-flight GETs), send immediately, and resolve without waiting for a response.
+    // The next poll will confirm the new value was applied.
+    client.put = function(uri, data) {
+      const encrypted = this.encrypt(typeof data === 'string' ? data : JSON.stringify(data));
+      const body = [
+        `PUT ${uri} HTTP/1.1`,
+        `User-Agent: ${this.USERAGENT}`,
+        `Content-Type: application/json`,
+        `Content-Length: ${encrypted.length}`,
+        ``,
+        encrypted,
+      ].join('\n\n');
+      const message = this.buildMessage(body);
+      return this.queue.add(() => {
+        this.client.send(message);
+        return Promise.resolve({ status: 'ok' });
+      });
+    };
+
     return client;
   }
 
