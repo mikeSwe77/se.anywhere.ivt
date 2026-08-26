@@ -1,7 +1,7 @@
 {
   "_comment": "This file is generated. Please edit .homeycompose/app.json instead.",
   "id": "se.anywhere.ivt",
-  "version": "1.0.8",
+  "version": "1.1.0",
   "compatibility": ">=12.0.0",
   "sdk": 3,
   "platforms": [
@@ -294,7 +294,7 @@
           "type": "group",
           "label": {
             "en": "Server settings",
-            "se": "Serverinställningar"
+            "sv": "Serverinställningar"
           },
           "children": [
             {
@@ -361,38 +361,6 @@
     }
   ],
   "capabilities": {
-    "compressor_active": {
-      "type": "boolean",
-      "title": {
-        "en": "Compressor Active",
-        "sv": "Kompressor aktiv"
-      },
-      "uiComponent": "sensor",
-      "getable": true,
-      "setable": false,
-      "insightsTitleTrue": {
-        "en": "Compressor is active",
-        "sv": "Kompressorn är aktiv"
-      },
-      "insightsTitleFalse": {
-        "en": "Compressor is inactive",
-        "sv": "Kompressorn är inaktiv"
-      }
-    },
-    "pump_modulation": {
-      "type": "number",
-      "title": {
-        "en": "Pump Modulation",
-        "sv": "Pumputnyttjande"
-      },
-      "uiComponent": "sensor",
-      "getable": true,
-      "setable": false,
-      "units": "%",
-      "min": 0,
-      "max": 100,
-      "decimals": 0
-    },
     "alarm_status": {
       "type": "boolean",
       "title": {
@@ -410,6 +378,24 @@
       "insightsTitleFalse": {
         "en": "The heat pump has no longer any active error",
         "sv": "Värmepumpen har inte längre någon aktiv felkod"
+      }
+    },
+    "compressor_active": {
+      "type": "boolean",
+      "title": {
+        "en": "Compressor Active",
+        "sv": "Kompressor aktiv"
+      },
+      "uiComponent": "sensor",
+      "getable": true,
+      "setable": false,
+      "insightsTitleTrue": {
+        "en": "Compressor is active",
+        "sv": "Kompressorn är aktiv"
+      },
+      "insightsTitleFalse": {
+        "en": "Compressor is inactive",
+        "sv": "Kompressorn är inaktiv"
       }
     },
     "hotwater_boost": {
@@ -455,6 +441,20 @@
           }
         }
       ]
+    },
+    "pump_modulation": {
+      "type": "number",
+      "title": {
+        "en": "Pump Modulation",
+        "sv": "Pumputnyttjande"
+      },
+      "uiComponent": "sensor",
+      "getable": true,
+      "setable": false,
+      "units": "%",
+      "min": 0,
+      "max": 100,
+      "decimals": 0
     }
   }
 }

@@ -22,5 +22,8 @@
   },
   "1.0.8": {
     "en": "Update contact information"
+  },
+  "1.1.0": {
+    "en": "Add temperature and hot water controls, Homey Energy Dashboard support and new sensor capabilities"
   }
 }
